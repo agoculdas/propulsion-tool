@@ -81,7 +81,7 @@ function useClock() {
 // ─────────────────────────────────────────────────────────────
 // Sidebar
 // ─────────────────────────────────────────────────────────────
-function Sidebar({ params, setParams, filters, setFilters, dirty, onCommit, onRevert }) {
+function Sidebar({ params, setParams, filters, setFilters, dirty, onCommit, onRevert, liveParams, liveFilters }) {
   const toggleMode = m => {
     const next = new Set(filters.modes);
     next.has(m) ? next.delete(m) : next.add(m);
@@ -95,6 +95,11 @@ function Sidebar({ params, setParams, filters, setFilters, dirty, onCommit, onRe
 
   return (
     <aside className="sidebar">
+      <div className="side-section">
+        <h3>Command</h3>
+        <MasterArm dirty={dirty} onCommit={onCommit} onRevert={onRevert} params={params} liveParams={liveParams} filters={filters} liveFilters={liveFilters}/>
+      </div>
+
       <div className="side-section">
         <h3>Mission Parameters</h3>
         <div className="field">
@@ -183,8 +188,6 @@ function Sidebar({ params, setParams, filters, setFilters, dirty, onCommit, onRe
           <div>RUNTIME: 47 ms</div>
         </div>
       </div>
-
-      <MasterArm dirty={dirty} onCommit={onCommit} onRevert={onRevert}/>
     </aside>
   );
 }
@@ -199,98 +202,151 @@ function Sidebar({ params, setParams, filters, setFilters, dirty, onCommit, onRe
 //   armed      : toggle thrown UP, commit fires, LED green pulse,
 //                then guard auto-closes after 700ms
 // ─────────────────────────────────────────────────────────────
-function MasterArm({ dirty, onCommit, onRevert }) {
+function MasterArm({ dirty, onCommit, onRevert, params, liveParams, filters, liveFilters }) {
   const [guardOpen, setGuardOpen] = useState(false);
-  const [armed, setArmed] = useState(false);
-  const armTimer = useRef(null);
+  const [firing, setFiring] = useState(false);
+  const fireTimer = useRef(null);
 
-  // When draft goes clean, retract everything
-  useEffect(() => {
-    if (!dirty && !armed) setGuardOpen(false);
-  }, [dirty, armed]);
+  // Auto-close guard whenever draft changes (forces re-lift per commit)
+  useEffect(() => { setGuardOpen(false); }, [params, filters]);
+  // Also close when draft goes clean
+  useEffect(() => { if (!dirty && !firing) setGuardOpen(false); }, [dirty, firing]);
 
-  const lift = () => {
-    if (armed) return;
-    setGuardOpen(true);
-  };
-  const close = () => {
-    if (armed) return;
-    setGuardOpen(false);
-  };
+  const lift = (e) => { e && e.stopPropagation(); if (firing || !dirty) return; setGuardOpen(true); };
+  const close = (e) => { e && e.stopPropagation(); if (firing) return; setGuardOpen(false); };
   const fire = () => {
-    if (!guardOpen || armed) return;
-    setArmed(true);
+    if (!guardOpen || firing || !dirty) return;
+    setFiring(true);
     onCommit();
-    clearTimeout(armTimer.current);
-    armTimer.current = setTimeout(() => {
-      setArmed(false);
-      setGuardOpen(false);
-    }, 750);
+    clearTimeout(fireTimer.current);
+    fireTimer.current = setTimeout(() => { setFiring(false); setGuardOpen(false); }, 750);
   };
+
+  // Ctrl+Enter — lift and press in one go
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.ctrlKey && e.key === 'Enter' && dirty && !firing) {
+        e.preventDefault();
+        setGuardOpen(true);
+        setFiring(true);
+        onCommit();
+        clearTimeout(fireTimer.current);
+        fireTimer.current = setTimeout(() => { setFiring(false); setGuardOpen(false); }, 750);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [dirty, firing, onCommit]);
 
   let status = 'idle';
-  if (armed) status = 'armed';
+  if (firing) status = 'firing';
   else if (guardOpen) status = 'unguarded';
   else if (dirty) status = 'pending';
+
+  // Build a compact two-line diff: "LIVE:  dryMass=500, Δv=300"  "DRAFT: dryMass=520, Δv=350 ↑"
+  const fmtN = n => (typeof n === 'number' ? (Math.round(n*1000)/1000).toString() : String(n));
+  const diffs = [];
+  if (liveParams && params) {
+    if (liveParams.dryMass !== params.dryMass) diffs.push({k:'DRY', live:liveParams.dryMass, draft:params.dryMass, unit:'kg'});
+    if (liveParams.deltaV  !== params.deltaV)  diffs.push({k:'ΔV',  live:liveParams.deltaV,  draft:params.deltaV,  unit:'m/s'});
+  }
+  if (liveFilters && filters) {
+    if (liveFilters.minT !== filters.minT) diffs.push({k:'T-MIN', live:liveFilters.minT, draft:filters.minT, unit:'N'});
+    if (liveFilters.maxT !== filters.maxT) diffs.push({k:'T-MAX', live:liveFilters.maxT, draft:filters.maxT, unit:'N'});
+    if (liveFilters.maxCx !== filters.maxCx) diffs.push({k:'CX-MAX', live:liveFilters.maxCx, draft:filters.maxCx, unit:''});
+    if (liveFilters.minTWR !== filters.minTWR) diffs.push({k:'TWR-MIN', live:liveFilters.minTWR, draft:filters.minTWR, unit:''});
+    if (liveFilters.heritage !== filters.heritage) diffs.push({k:'HERITAGE', live:liveFilters.heritage, draft:filters.heritage, unit:''});
+    if (liveFilters.noItar !== filters.noItar) diffs.push({k:'ITAR-EXCL', live:liveFilters.noItar?'Y':'N', draft:filters.noItar?'Y':'N', unit:''});
+    const eqSet = (a,b) => a.size === b.size && [...a].every(x => b.has(x));
+    if (!eqSet(liveFilters.modes, filters.modes)) diffs.push({k:'MODES', live:[...liveFilters.modes].join('/'), draft:[...filters.modes].join('/'), unit:''});
+    if (!eqSet(liveFilters.fuels, filters.fuels)) diffs.push({k:'FUELS', live:[...liveFilters.fuels].join('/'), draft:[...filters.fuels].join('/'), unit:''});
+  }
+  const primaryDiff = diffs[0];
+  const extraDiffs = diffs.length - 1;
+  const arrow = primaryDiff && typeof primaryDiff.live === 'number' && typeof primaryDiff.draft === 'number'
+    ? (primaryDiff.draft > primaryDiff.live ? '↑' : primaryDiff.draft < primaryDiff.live ? '↓' : '')
+    : (primaryDiff && primaryDiff.live !== primaryDiff.draft ? '↕' : '');
 
   return (
     <div className={`master-arm master-arm-${status}`}>
       <div className="ma-plate">
         <div className="ma-plate-top">
-          <span className="ma-plate-lbl">ARM / COMMIT CONFIG</span>
-          <span className="ma-plate-sn">SN-04-1129</span>
+          <span className="ma-plate-lbl">ARM / COMMIT</span>
+          <span className="ma-plate-sn">CTRL+↵ · SN-04-1129</span>
         </div>
-        <div className="ma-housing">
-          <div className="ma-rail-l"/>
-          <div className="ma-rail-r"/>
-          {/* Hinge pins (render above the guard) */}
-          <div className="ma-hinge ma-hinge-l"/>
-          <div className="ma-hinge ma-hinge-r"/>
 
-          {/* The actual toggle — sits inside the housing */}
-          <button
-            className={`ma-toggle ${armed ? 'up' : 'down'}`}
-            onClick={fire}
-            disabled={!guardOpen || armed}
-            aria-label="Commit configuration"
-          >
-            <span className="ma-toggle-shaft"/>
-            <span className="ma-toggle-ball"/>
-          </button>
+        <div className="ma-pb-row">
+          {/* Guarded illuminated pushbutton */}
+          <div className={`ma-pb-housing ${guardOpen ? 'guard-open' : 'guard-closed'} ${firing ? 'firing' : ''}`}>
+            <button
+              className={`ma-pb ma-pb-${status}`}
+              onClick={fire}
+              disabled={!guardOpen || firing || !dirty}
+              aria-label="Commit configuration"
+              title={guardOpen ? 'Press to commit' : 'Guard closed'}
+            >
+              <span className="ma-pb-ring"/>
+              <span className="ma-pb-lens">
+                <span className="ma-pb-glow"/>
+                <span className="ma-pb-label">{firing ? 'LIVE' : 'COMMIT'}</span>
+                <span className="ma-pb-gloss"/>
+              </span>
+            </button>
 
-          {/* Label banks on the housing face */}
-          <div className="ma-label ma-label-safe">SAFE</div>
-          <div className="ma-label ma-label-arm">ARM</div>
-
-          {/* The flip-up red safety guard */}
-          <div
-            className={`ma-guard ${guardOpen ? 'open' : 'closed'}`}
-            onClick={guardOpen ? close : lift}
-            role="button"
-            aria-label={guardOpen ? 'Lower guard' : 'Lift guard'}
-          >
-            <div className="ma-guard-face">
-              <div className="ma-guard-chevrons"/>
-              <div className="ma-guard-engrave">LIFT GUARD</div>
-              <div className="ma-guard-screw ma-guard-screw-tl"/>
-              <div className="ma-guard-screw ma-guard-screw-tr"/>
-              <div className="ma-guard-screw ma-guard-screw-bl"/>
-              <div className="ma-guard-screw ma-guard-screw-br"/>
+            {/* Flip-up safety guard */}
+            <div
+              className={`ma-guard ${guardOpen ? 'open' : 'closed'}`}
+              onClick={guardOpen ? close : lift}
+              role="button"
+              aria-label={guardOpen ? 'Lower guard' : 'Lift guard'}
+            >
+              <div className="ma-guard-face">
+                <div className="ma-guard-chevrons"/>
+                <div className="ma-guard-engrave">{dirty ? 'LIFT · COMMIT' : 'NO DRAFT'}</div>
+                <div className="ma-guard-screw ma-guard-screw-tl"/>
+                <div className="ma-guard-screw ma-guard-screw-tr"/>
+                <div className="ma-guard-screw ma-guard-screw-bl"/>
+                <div className="ma-guard-screw ma-guard-screw-br"/>
+              </div>
+              <div className="ma-guard-edge"/>
             </div>
-            <div className="ma-guard-edge"/>
+          </div>
+
+          {/* Two-line LIVE / DRAFT diff */}
+          <div className="ma-diff">
+            {primaryDiff ? (
+              <>
+                <div className="ma-diff-row live">
+                  <span className="ma-diff-tag">LIVE</span>
+                  <span className="ma-diff-k">{primaryDiff.k}</span>
+                  <span className="ma-diff-v">{fmtN(primaryDiff.live)}<span className="ma-diff-u">{primaryDiff.unit}</span></span>
+                </div>
+                <div className="ma-diff-row draft">
+                  <span className="ma-diff-tag">DRAFT</span>
+                  <span className="ma-diff-k">{primaryDiff.k}</span>
+                  <span className="ma-diff-v hi">{fmtN(primaryDiff.draft)}<span className="ma-diff-u">{primaryDiff.unit}</span> <span className={`ma-diff-arr ${arrow==='↑'?'up':arrow==='↓'?'down':''}`}>{arrow}</span></span>
+                </div>
+                {extraDiffs > 0 && <div className="ma-diff-more">+{extraDiffs} MORE CHANGED</div>}
+              </>
+            ) : (
+              <>
+                <div className="ma-diff-row live"><span className="ma-diff-tag">LIVE</span><span className="ma-diff-msg">CONFIG COMMITTED</span></div>
+                <div className="ma-diff-row draft idle"><span className="ma-diff-tag">DRAFT</span><span className="ma-diff-msg">NO PENDING CHANGES</span></div>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Status strip: LED + message + revert */}
+        {/* Status strip */}
         <div className="ma-status">
           <div className={`ma-led ma-led-${status}`}/>
           <div className="ma-status-txt">
             {status === 'idle' && 'CONFIG LIVE · NOMINAL'}
-            {status === 'pending' && 'DRAFT PENDING · LIFT GUARD TO ARM'}
-            {status === 'unguarded' && 'SAFE · THROW SWITCH TO ARM'}
-            {status === 'armed' && 'ARMED · CONFIG COMMITTED'}
+            {status === 'pending' && 'DRAFT · LIFT GUARD OR CTRL+↵'}
+            {status === 'unguarded' && 'UNGUARDED · PRESS TO COMMIT'}
+            {status === 'firing' && 'ARMED · CONFIG COMMITTED'}
           </div>
-          {dirty && !armed && (
+          {dirty && !firing && (
             <button className="ma-revert" onClick={onRevert}>REVERT</button>
           )}
         </div>
@@ -439,7 +495,7 @@ function CASList({ advisories, ackedCAS, onResetCAS }) {
 // ─────────────────────────────────────────────────────────────
 // Hero: Top config with P&ID schematic + metrics
 // ─────────────────────────────────────────────────────────────
-function HeroTopConfig({ cfg, dv, selectedId, setSelectedId, feasible, dryMass, advisories, ackedMaster, onResetMaster, onTestMaster, masterTesting }) {
+function HeroTopConfig({ cfg, dv, selectedId, setSelectedId, feasible, dryMass, advisories, ackedMaster, onResetMaster, onTestMaster, masterTesting, pinned, togglePin, committedDV }) {
   const recalc = (() => {
     const r = recalcForDV(cfg, dv, dryMass);
     return { ...cfg.budget, dry: dryMass, prop: r.prop, wet: r.wet, frac: r.frac };
@@ -452,17 +508,74 @@ function HeroTopConfig({ cfg, dv, selectedId, setSelectedId, feasible, dryMass, 
   const twrSev    = advisories.items.find(a => a.src === 'TWR')?.sev;
   const sevClass = sev => sev === 'WARNING' ? 'metric-alarm warning' : sev === 'CAUTION' ? 'metric-alarm caution' : '';
 
+  // Top-2 alternatives — re-rank feasible at the COMMITTED Δv for stability
+  const rankedByCommitted = useMemo(() => {
+    return feasible.map(c => {
+      const r = recalcForDV(c, committedDV, dryMass);
+      return { ...c, _committedWet: r.wet };
+    }).sort((a,b) => a._committedWet - b._committedWet);
+  }, [feasible, committedDV, dryMass]);
+  const currentIdx = rankedByCommitted.findIndex(c => c.id === cfg.id);
+  const currentCommittedWet = currentIdx >= 0 ? rankedByCommitted[currentIdx]._committedWet : recalc.wet;
+  const isOptimal = currentIdx === 0;
+  // If current = #1, surface #2 as alternative; else show top 2 (excluding current)
+  const top2 = useMemo(() => {
+    const picks = [];
+    for (const c of rankedByCommitted) {
+      if (c.id === cfg.id) continue;
+      picks.push(c);
+      if (picks.length >= 2) break;
+    }
+    return picks;
+  }, [rankedByCommitted, cfg.id]);
+  const scrubberOffset = Math.abs(dv - committedDV) > 0.5;
+
   return (
     <section style={{marginBottom: 28}}>
-      <div className="top-candidate-bar">
-        <a href={`Schematic.html?cfg=${cfg.id}&from=${encodeURIComponent(location.pathname.split('/').pop())}`} className="schematic-open-btn" aria-label="Open detailed schematic">
+      <div className="top-candidate-bar compact">
+        <a href={`Schematic.html?cfg=${cfg.id}&from=${encodeURIComponent(location.pathname.split('/').pop())}`} className="schematic-open-btn compact" aria-label="Open detailed schematic">
           <span className="sob-led"/>
           <span className="sob-face">
-            <span className="sob-main">OPEN DETAILED P&amp;ID</span>
-            <span className="sob-sub">PID-{cfg.id}-R01 · SHEET 1/1 · ISA-5.1</span>
+            <span className="sob-main">OPEN DETAILED DESIGN</span>
+            <span className="sob-sub">PID-{cfg.id}-R01</span>
           </span>
-          <span className="sob-arrow">▶</span>
+          <span className="sob-arrow">▼</span>
         </a>
+
+        <div className="top2-cell">
+          <div className="top2-head">
+            {isOptimal ? <span className="top2-optimal">★ OPTIMAL · TOP RANKED</span> : <span>TOP ALTERNATIVES {scrubberOffset && <span className="top2-stale">· vs committed Δv {committedDV.toFixed(0)}</span>}</span>}
+          </div>
+          <div className="top2-list">
+            {top2.map((c, i) => {
+              const delta = c._committedWet - currentCommittedWet;
+              const deltaStr = delta === 0 ? '±0 kg' : (delta > 0 ? '+' : '') + delta.toFixed(1) + ' kg';
+              const deltaCls = delta < 0 ? 'down' : delta > 0 ? 'up' : '';
+              return (
+                <div
+                  key={c.id}
+                  className="top2-item"
+                  onClick={(e) => {
+                    if (e.shiftKey) { togglePin(c.id); } else { setSelectedId(c.id); }
+                  }}
+                  title={`Click to preview · Shift-click to pin`}
+                >
+                  <span className="top2-rank">#{isOptimal ? i+2 : i+1}</span>
+                  <span className="top2-id">{c.id}</span>
+                  <span className="top2-eng">{c.engine.mfr.split(' ')[0]} {c.engine.model}</span>
+                  <span className="top2-mass">{c._committedWet.toFixed(1)} kg</span>
+                  <span className={`top2-delta ${deltaCls}`}>{deltaStr}</span>
+                  <button className={`top2-pin ${pinned.has(c.id) ? 'on' : ''}`}
+                          onClick={(e) => { e.stopPropagation(); togglePin(c.id); }}
+                          title="Pin to Pareto compare">
+                    {pinned.has(c.id) ? '●' : '○'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         <select value={cfg.id} onChange={e => setSelectedId(e.target.value)} className="top-candidate-picker">
           {feasible.map((c,i) => (
             <option key={c.id} value={c.id}>#{String(i+1).padStart(2,'0')} — {c.engine.mfr} {c.engine.model} · {c.budget.wet.toFixed(1)}kg</option>
@@ -1018,7 +1131,7 @@ function App() {
           <span className="brand-sub">· {window.MARK_BLOCK || 'MK 1 BLK 1'} — mission-control</span>
         </div>
         <div className="topbar-meta">
-          <span className={`solver-pill solver-${alarmState}`}><span className="dot"></span> {alarmState === 'warning' ? 'MASTER WARNING' : alarmState === 'caution' ? 'MASTER CAUTION' : 'SOLVER ARMED'}</span>
+          <span className={`solver-pill solver-${alarmState}`}><span className="dot"></span> {alarmState === 'warning' ? 'MASTER WARNING' : alarmState === 'caution' ? 'MASTER CAUTION' : 'SYSTEM NOMINAL'}</span>
           <span>MISSION · {params.dryMass}kg · Δv {dv.toFixed(0)}m/s</span>
           <span>CONFIGS · {feasible.length}/{CONFIGS.length}</span>
           <span>PINNED · {pinned.size}</span>
@@ -1030,6 +1143,7 @@ function App() {
         <Sidebar
           params={draftParams} setParams={setDraftParams}
           filters={draftFilters} setFilters={setDraftFilters}
+          liveParams={params} liveFilters={filters}
           dirty={dirty} onCommit={commit} onRevert={revert}
         />
 
@@ -1050,6 +1164,9 @@ function App() {
                 onResetMaster={resetMaster}
                 onTestMaster={testMaster}
                 masterTesting={masterTesting}
+                pinned={pinned}
+                togglePin={togglePin}
+                committedDV={params.deltaV}
               />
 
               <CASList advisories={advisories} ackedCAS={ackedCAS} onResetCAS={resetCAS}/>

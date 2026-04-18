@@ -3416,3 +3416,380 @@ html::-webkit-scrollbar-corner {
   font-size: clamp(9px, 0.85vw, 12px) !important;
   letter-spacing: 0.22em !important;
 }
+
+
+/* ============================================================
+   MK 2 BLK 16 — Sidebar reorder, guarded illuminated pushbutton,
+   LIVE/DRAFT diff, compact PID button + Top 2 alternatives cell.
+   ============================================================ */
+
+/* --- Command section / MasterArm pushbutton layout ---------- */
+.side-section:first-child .master-arm { margin-top: 0; }
+
+.ma-pb-row {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+  align-items: stretch;
+}
+
+/* The housing holds the button + the hinged guard above it */
+.ma-pb-housing {
+  position: relative;
+  width: 92px;
+  height: 92px;
+  padding: 8px;
+  background:
+    repeating-linear-gradient(90deg, rgba(255,255,255,0.018) 0 1px, transparent 1px 2px),
+    linear-gradient(180deg, #2a323b 0%, #1a2028 48%, #0e1318 100%);
+  border: 1px solid #0a0e12;
+  border-radius: 3px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.06),
+    inset 0 2px 3px rgba(0,0,0,0.55),
+    inset 0 -1px 0 rgba(255,255,255,0.04),
+    0 2px 4px rgba(0,0,0,0.5);
+  perspective: 480px;
+  perspective-origin: 50% 100%;
+}
+
+/* The illuminated pushbutton itself */
+.ma-pb {
+  position: absolute;
+  inset: 10px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  z-index: 1;
+  outline: 0;
+  transition: transform 0.08s ease;
+}
+.ma-pb[disabled] { cursor: not-allowed; }
+.ma-pb:active:not([disabled]) { transform: translateY(2px); }
+
+/* Chromed bezel ring */
+.ma-pb-ring {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  background:
+    conic-gradient(from 220deg,
+      #1a1e22 0deg, #707880 90deg, #2a3036 200deg, #555d65 320deg, #1a1e22 360deg);
+  box-shadow:
+    inset 0 0 0 1px rgba(0,0,0,0.9),
+    0 1px 1px rgba(255,255,255,0.1),
+    0 -1px 1px rgba(0,0,0,0.6);
+}
+
+/* The lens */
+.ma-pb-lens {
+  position: absolute; inset: 5px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, #0a0d10 0%, #050607 70%, #020304 100%);
+  box-shadow:
+    inset 0 1px 2px rgba(0,0,0,0.9),
+    inset 0 0 0 1px rgba(0,0,0,0.8);
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.ma-pb-glow {
+  position: absolute; inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+.ma-pb-gloss {
+  position: absolute; left: 0; right: 0; top: 0; height: 45%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 100%);
+  border-radius: 50% 50% 0 0;
+  pointer-events: none;
+}
+.ma-pb-label {
+  font-family: var(--font-display), 'Share Tech Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: #3a4048;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.06);
+  z-index: 2;
+  position: relative;
+}
+
+/* SAFE / IDLE — lens unlit, label engraved-dim */
+.ma-pb-idle .ma-pb-label,
+.ma-pb-unguarded .ma-pb-label.dummy { /* noop */ }
+
+/* PENDING — amber flashing (draft unlifted) */
+.ma-pb-pending .ma-pb-glow {
+  opacity: 1;
+  background: radial-gradient(circle at 50% 50%, #ffe28a 0%, #ffb13a 22%, #c07010 55%, transparent 80%);
+  mix-blend-mode: screen;
+  animation: pbBlinkAmber 900ms ease-in-out infinite;
+}
+.ma-pb-pending .ma-pb-label {
+  color: #2a1400;
+  text-shadow: 0 0 3px rgba(255,200,100,0.5), 0 1px 0 rgba(255,220,160,0.3);
+}
+.ma-pb-pending .ma-pb-ring {
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.9), 0 0 12px rgba(245,176,65,0.5);
+}
+
+/* UNGUARDED — steady amber (ready to commit) */
+.ma-pb-unguarded .ma-pb-glow {
+  opacity: 1;
+  background: radial-gradient(circle at 50% 50%, #ffe28a 0%, #ffb13a 25%, #b06010 60%, transparent 85%);
+  mix-blend-mode: screen;
+}
+.ma-pb-unguarded .ma-pb-label {
+  color: #1f0f00;
+  text-shadow: 0 0 3px rgba(255,200,100,0.7), 0 1px 0 rgba(255,220,160,0.35);
+}
+.ma-pb-unguarded .ma-pb-ring {
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.9), 0 0 16px rgba(245,176,65,0.7);
+}
+
+/* FIRING — green steady (committed, brief) */
+.ma-pb-firing .ma-pb-glow {
+  opacity: 1;
+  background: radial-gradient(circle at 50% 50%, #bcffc6 0%, #6ee06a 22%, #2a7a30 55%, transparent 80%);
+  mix-blend-mode: screen;
+}
+.ma-pb-firing .ma-pb-label {
+  color: #001a00;
+  text-shadow: 0 0 3px rgba(188,255,198,0.7), 0 1px 0 rgba(200,255,210,0.35);
+}
+.ma-pb-firing .ma-pb-ring {
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.9), 0 0 18px rgba(110,224,106,0.85);
+}
+.ma-pb-housing.firing {
+  animation: pbFireFlash 450ms ease-out;
+}
+@keyframes pbFireFlash {
+  0%   { box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), inset 0 2px 3px rgba(0,0,0,0.55), 0 0 22px rgba(110,224,106,0.8); }
+  100% { box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), inset 0 2px 3px rgba(0,0,0,0.55), 0 2px 4px rgba(0,0,0,0.5); }
+}
+@keyframes pbBlinkAmber { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+/* Reuse the existing guard styles; just reposition for the square housing */
+.ma-pb-housing .ma-guard {
+  position: absolute;
+  inset: 6px;
+  height: auto;
+  transform-origin: 50% 100%;
+  transform: rotateX(0deg);
+  transform-style: preserve-3d;
+  transition: transform 420ms cubic-bezier(.5,.05,.25,1);
+  cursor: pointer;
+  z-index: 4;
+}
+.ma-pb-housing .ma-guard.open { transform: rotateX(-88deg); }
+
+/* --- LIVE / DRAFT diff column -------------------------------- */
+.ma-diff {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+  font-family: var(--font-display), 'Share Tech Mono', monospace;
+  min-width: 0;
+}
+.ma-diff-row {
+  display: grid;
+  grid-template-columns: 40px 60px 1fr;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #0a0e12;
+  border: 1px solid #1a2028;
+  border-radius: 2px;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  min-width: 0;
+}
+.ma-diff-row.live { border-left: 2px solid #3a454f; }
+.ma-diff-row.draft { border-left: 2px solid #f5b041; background: rgba(245,176,65,0.04); }
+.ma-diff-row.draft.idle { border-left-color: #3a454f; background: #0a0e12; }
+.ma-diff-tag {
+  font-size: 8.5px;
+  letter-spacing: 0.2em;
+  color: #5a6670;
+  font-weight: 700;
+}
+.ma-diff-row.draft .ma-diff-tag { color: #f5b041; }
+.ma-diff-k {
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  color: #7a8690;
+  font-weight: 600;
+}
+.ma-diff-v {
+  font-size: 11.5px;
+  color: #aab4bd;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ma-diff-v.hi { color: #ffd584; font-weight: 700; }
+.ma-diff-u { color: #5a6670; font-size: 9px; margin-left: 2px; }
+.ma-diff-arr.up   { color: #ff8080; text-shadow: 0 0 4px rgba(255,80,80,0.6); margin-left: 4px; }
+.ma-diff-arr.down { color: #6ee06a; text-shadow: 0 0 4px rgba(110,224,106,0.6); margin-left: 4px; }
+.ma-diff-msg {
+  grid-column: 2 / span 2;
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  color: #5a6670;
+}
+.ma-diff-more {
+  font-size: 8.5px;
+  letter-spacing: 0.18em;
+  color: #7a8690;
+  text-align: right;
+  padding: 2px 4px 0;
+}
+
+/* New status — firing (was 'armed' before) */
+.ma-led-firing {
+  background: radial-gradient(circle at 35% 30%, #bcffc6 0%, #6ee06a 40%, #2a7a30 100%);
+  box-shadow:
+    0 0 14px rgba(110,224,106,0.95),
+    0 0 24px rgba(110,224,106,0.5),
+    inset 0 -1px 1px rgba(0,0,0,0.4);
+  animation: maLedBlink 600ms ease-in-out infinite;
+}
+.master-arm-firing .ma-status-txt {
+  color: #6ee06a;
+  text-shadow: 0 0 6px rgba(110,224,106,0.7);
+  animation: maLedBlink 600ms ease-in-out infinite;
+}
+.master-arm-firing .ma-plate {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.04),
+    inset 0 -1px 0 rgba(0,0,0,0.5),
+    0 0 18px rgba(110,224,106,0.45),
+    0 3px 8px rgba(0,0,0,0.55);
+}
+
+/* --- Compact PID button + Top 2 cell ------------------------ */
+.top-candidate-bar.compact {
+  display: grid;
+  grid-template-columns: 4fr 3fr 3fr;
+  gap: 10px;
+  align-items: stretch;
+  margin-bottom: 14px;
+}
+.schematic-open-btn.compact {
+  height: 80px;
+  width: 100%;
+  padding: 0;
+}
+.schematic-open-btn.compact .sob-led { width: 44px; }
+.schematic-open-btn.compact .sob-led::before { width: 18px; height: 18px; }
+.schematic-open-btn.compact .sob-led::after { width: 28px; height: 28px; }
+.schematic-open-btn.compact .sob-face { padding: 0 18px; gap: 4px; }
+.schematic-open-btn.compact .sob-main { font-size: 15px; letter-spacing: 0.22em; }
+.schematic-open-btn.compact .sob-sub { font-size: 9px; letter-spacing: 0.26em; }
+.schematic-open-btn.compact .sob-arrow { width: 44px; font-size: 14px; }
+
+/* Top 2 cell — recessed panel with two rows */
+.top2-cell {
+  background:
+    linear-gradient(180deg, #0c1014 0%, #080a0d 100%);
+  border: 1px solid #1a2028;
+  box-shadow:
+    inset 0 1px 2px rgba(0,0,0,0.6),
+    inset 0 -1px 0 rgba(255,255,255,0.02);
+  padding: 5px 10px 6px;
+  min-width: 0;
+  display: flex; flex-direction: column; justify-content: center;
+}
+.top2-head {
+  font-family: var(--font-mono), monospace;
+  font-size: 8.5px;
+  letter-spacing: 0.2em;
+  font-weight: 700;
+  color: #5a6670;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+  display: flex; justify-content: space-between; gap: 8px;
+}
+.top2-optimal {
+  color: var(--radar);
+  text-shadow: 0 0 6px rgba(168,233,74,0.5);
+  letter-spacing: 0.22em;
+}
+.top2-stale {
+  color: #f5b041;
+  letter-spacing: 0.14em;
+  font-size: 8px;
+}
+.top2-list {
+  display: flex; flex-direction: column;
+  gap: 2px;
+}
+.top2-item {
+  display: grid;
+  grid-template-columns: 20px 36px 1fr 58px 60px 18px;
+  gap: 6px;
+  align-items: center;
+  padding: 3px 6px;
+  background: rgba(255,255,255,0.012);
+  border: 1px solid transparent;
+  border-left: 2px solid #2a323a;
+  font-family: var(--font-mono), monospace;
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+.top2-item:hover {
+  background: rgba(168,233,74,0.06);
+  border-color: var(--hairline-strong);
+  border-left-color: var(--radar);
+}
+.top2-rank {
+  font-size: 9px; letter-spacing: 0.08em;
+  color: #5a6670;
+  font-weight: 700;
+}
+.top2-id {
+  color: var(--radar);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.top2-eng {
+  color: #aab4bd;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+}
+.top2-mass {
+  color: #c9d5de;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  font-size: 10.5px;
+}
+.top2-delta {
+  color: #7a8690;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  font-size: 10px;
+  font-weight: 600;
+}
+.top2-delta.down { color: #6ee06a; }
+.top2-delta.up   { color: #f5b041; }
+.top2-pin {
+  width: 18px; height: 18px;
+  border: 1px solid var(--hairline-strong);
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 10px;
+  cursor: pointer;
+  border-radius: 0;
+  padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.top2-pin:hover { border-color: var(--radar); color: var(--radar); }
+.top2-pin.on { border-color: var(--radar); background: rgba(168,233,74,0.12); color: var(--radar); }
