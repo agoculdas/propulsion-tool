@@ -1,5 +1,5 @@
 // Main App — v1 (safe, polished mission-control)
-/* global React, ReactDOM, CONFIGS, BASELINE, buildPID, buildScatter, recalcForDV */
+/* global React, ReactDOM, CONFIGS, BASELINE, buildPID, buildScatter, recalcForDV, solveMission */
 
 const { useState, useEffect, useMemo, useRef } = React;
 
@@ -81,7 +81,7 @@ function useClock() {
 // ─────────────────────────────────────────────────────────────
 // Sidebar
 // ─────────────────────────────────────────────────────────────
-function Sidebar({ params, setParams, filters, setFilters, dirty, onCommit, onRevert, liveParams, liveFilters }) {
+function Sidebar({ params, setParams, filters, setFilters, dirty, onCommit, onRevert, liveParams, liveFilters, solverMeta }) {
   const toggleMode = m => {
     const next = new Set(filters.modes);
     next.has(m) ? next.delete(m) : next.add(m);
@@ -182,10 +182,16 @@ function Sidebar({ params, setParams, filters, setFilters, dirty, onCommit, onRe
       <div className="side-section">
         <h3>Telemetry</h3>
         <div style={{fontFamily:'var(--font-mono)', fontSize:10.5, color:'var(--text-faint)', lineHeight:1.8, letterSpacing:'0.04em'}}>
-          <div>DB: 23 engines / 26 tanks</div>
-          <div>SOLVER: tsiolkovsky-iterative</div>
-          <div>TOL: 1e-4 kg</div>
-          <div>RUNTIME: 47 ms</div>
+          <div>DB: {solverMeta ? solverMeta.totalCandidates : '—'} engines / {window.SOLVER_TANKS ? window.SOLVER_TANKS.length : '—'} tanks</div>
+          <div>SOLVER: {solverMeta ? solverMeta.solver : '—'}</div>
+          <div>FEASIBLE: {solverMeta ? `${solverMeta.feasibleCount}/${solverMeta.filteredCount}` : '—'}</div>
+          <div>CONVERGED: {solverMeta ? `${solverMeta.convergedCount}/${solverMeta.feasibleCount}` : '—'}</div>
+          <div>ITER MAX: {solverMeta ? solverMeta.maxIterations : '—'}</div>
+          <div>TOL: 1e-2 kg</div>
+          <div>RUNTIME: {solverMeta ? solverMeta.runtimeMs.toFixed(1) : '—'} ms</div>
+          {solverMeta && solverMeta.oscillationDampedCount > 0 && (
+            <div style={{color: 'var(--ox-amber, #d8a84a)'}}>OSC-DAMPED: {solverMeta.oscillationDampedCount}</div>
+          )}
         </div>
       </div>
     </aside>
@@ -566,7 +572,6 @@ function HeroTopConfig({ cfg, dv, selectedId, setSelectedId, feasible, dryMass, 
                   title={`Click to preview · Shift-click to pin`}
                 >
                   <span className="top2-rank">#{isOptimal ? i+2 : i+1}</span>
-                  <span className="top2-id">{c.id}</span>
                   <span className="top2-eng">{c.engine.mfr.split(' ')[0]} {c.engine.model}</span>
                   <span className="top2-mass">{c._committedWet.toFixed(1)} kg</span>
                   <span className={`top2-delta ${deltaCls}`}>{deltaStr}</span>
@@ -666,6 +671,15 @@ function HeroTopConfig({ cfg, dv, selectedId, setSelectedId, feasible, dryMass, 
 // Sensitivity slider strip
 // ─────────────────────────────────────────────────────────────
 function SensitivityStrip({ cfg, dv, setDV, dryMass, feasible, alarmState, advisories }) {
+  // Local slider position — moves with the drag so the thumb + Δv readout
+  // are responsive, but all DERIVED values (wet mass, fraction, alarm,
+  // mass-delta vs optimal) are computed from committed `dv` so they don't
+  // flicker with cheap-preview numbers during drag. On release, parent
+  // setDV commits and the full solver re-runs.
+  const [localDV, setLocalDV] = useState(dv);
+  useEffect(() => { setLocalDV(dv); }, [dv]);
+  const commit = () => { if (localDV !== dv) setDV(localDV); };
+
   const r = recalcForDV(cfg, dv, dryMass);
   // Mass-optimal reference: lightest feasible config re-solved at the current Δv.
   // Delta is (this config - min feasible wet). Positive = heavier than optimum.
@@ -691,13 +705,20 @@ function SensitivityStrip({ cfg, dv, setDV, dryMass, feasible, alarmState, advis
     <div className="slider-card">
       <div>
         <div className="sc-title">Δ-V Sensitivity</div>
-        <div className="sc-val">{dv.toFixed(0)}<span className="unit" style={{fontSize:12}}> m/s</span></div>
+        <div className="sc-val">{localDV.toFixed(0)}<span className="unit" style={{fontSize:12}}> m/s</span></div>
         <div className="sc-delta">baseline {BASELINE.deltaV} m/s</div>
       </div>
       <div>
         <div className="slider-row" style={{marginBottom:10}}>
           <span className="num" style={{color:'var(--text-faint)', fontSize:10}}>50</span>
-          <input type="range" min="50" max="6000" step="25" value={dv} onChange={e => setDV(+e.target.value)}/>
+          <input type="range" min="50" max="6000" step="25"
+            value={localDV}
+            onChange={e => setLocalDV(+e.target.value)}
+            onPointerUp={commit}
+            onKeyUp={commit}
+            onTouchEnd={commit}
+            onBlur={commit}
+          />
           <span className="num" style={{color:'var(--text-faint)', fontSize:10}}>6000</span>
         </div>
         <div style={{fontFamily:'var(--font-mono)', fontSize:10, color:'var(--text-faint)', textAlign:'center', letterSpacing:'0.1em'}}>
@@ -1003,10 +1024,29 @@ function App() {
   const [dv, setDV] = useState(300);
   // Sidebar ΔV → sensitivity slider baseline (applied on commit)
   useEffect(() => { setDV(params.deltaV); }, [params.deltaV]);
+
+  // Sensitivity slider commit handler — called ONLY on drag release (and
+  // keyboard-arrow release). During drag the slider's thumb moves via
+  // local component state; derived values stay frozen at the committed Δv,
+  // so the user doesn't see a jump from cheap-preview numbers to iterated
+  // numbers on release.
+  const commitDV = React.useCallback((newDV) => {
+    setLiveParams(p => ({ ...p, deltaV: newDV }));
+    setDraftParams(p => ({ ...p, deltaV: newDV }));
+  }, []);
   const [tab, setTab] = useState('ranked'); // ranked | compare | detail
+  // Pinned state — silently drop stale IDs (old C01-C13 scheme) on load.
+  // After the slug migration, old positional IDs don't resolve against the
+  // new catalog; we give users a clean empty set rather than a confusing
+  // mix of hits and misses.
   const [pinned, setPinned] = useState(() => {
-    try { const s = localStorage.getItem('pinned-v1'); return new Set(s ? JSON.parse(s) : ['C01','C03','C05']); }
-    catch { return new Set(['C01','C03','C05']); }
+    try {
+      const s = localStorage.getItem('pinned-v1');
+      const stored = s ? JSON.parse(s) : [];
+      const valid = stored.filter(id => window.CONFIGS.some(c => c.id === id));
+      return new Set(valid);
+    }
+    catch { return new Set(); }
   });
 
   useEffect(() => { try { localStorage.setItem('pinned-v1', JSON.stringify([...pinned])); } catch {} }, [pinned]);
@@ -1014,25 +1054,45 @@ function App() {
   // Mode → default fuel mapping used by the fuel-filter chips
   const fuelForMode = { Mono: 'N2H4', Biprop: 'MMH', Green: 'LMP-103S' };
 
-  const feasible = useMemo(() => {
-    return CONFIGS.map(c => {
-      // recompute budget so sidebar dryMass + deltaV actually flow through
-      const r = recalcForDV(c, params.deltaV, params.dryMass);
-      return { ...c, budget: { ...c.budget, dry: params.dryMass, prop: r.prop, wet: r.wet, frac: r.frac } };
-    }).filter(c => {
-      if (!filters.modes.has(c.engine.mode)) return false;
-      if (!filters.fuels.has(fuelForMode[c.engine.mode])) return false;
-      if (c.engine.thrust < filters.minT || c.engine.thrust > filters.maxT) return false;
-      if (filters.heritage === 0 && c.engine.status !== 'COTS') return false;
-      if (filters.heritage === 1 && c.engine.status === 'Dev') return false;
-      if (filters.noItar && c.engine.itar) return false;
-      if (c.engine.cx > filters.maxCx) return false;
-      return true;
-    }).sort((a,b) => a.budget.wet - b.budget.wet);
+  // Live trade-study — runs the real iterative solver client-side. Memoized
+  // on mission inputs + filter object ref (setFilters always produces a new
+  // object when content changes, so ref equality is sufficient).
+  const studyResult = useMemo(() => {
+    const modeNameMap = { Mono: 'MONOPROP', Biprop: 'BIPROP', Green: 'GREEN_MONOPROP' };
+    const modesAllowed = [...filters.modes].map(m => modeNameMap[m]);
+    const res = window.solveMission(
+      { dryMass: params.dryMass, deltaV: params.deltaV },
+      {
+        allowedModes: modesAllowed,
+        minThrustN: filters.minT,
+        maxThrustN: filters.maxT,
+        includeDev: filters.heritage === 2,
+        excludeItar: filters.noItar,
+        maxComplexity: filters.maxCx,
+      }
+    );
+    return res;
   }, [filters, params.dryMass, params.deltaV]);
 
+  // Post-filter applied on top of the solver output: fuel-family checkboxes
+  // (frontend state keeps modes + fuels as two separate chip banks) and the
+  // heritage-strict case (COTS-only, excluding delta-qual).
+  const feasible = useMemo(() => {
+    return studyResult.configs.filter(c => {
+      if (!filters.fuels.has(fuelForMode[c.engine.mode])) return false;
+      if (filters.heritage === 0 && c.engine.status !== 'COTS') return false;
+      return true;
+    });
+  }, [studyResult, filters.fuels, filters.heritage]);
+
   const [selectedId, setSelectedIdRaw] = useState(() => {
-    try { return localStorage.getItem('selected-v1') || 'C01'; } catch { return 'C01'; }
+    // Silently drop a stale selected-v1 if it doesn't resolve against
+    // the current slug-based catalog. Fall back to the cheapest config.
+    try {
+      const stored = localStorage.getItem('selected-v1');
+      if (stored && window.CONFIGS.some(c => c.id === stored)) return stored;
+    } catch {}
+    return window.CONFIGS[0]?.id || '';
   });
   const setSelectedId = id => { setSelectedIdRaw(id); try { localStorage.setItem('selected-v1', id); } catch {} };
 
@@ -1150,6 +1210,7 @@ function App() {
           filters={draftFilters} setFilters={setDraftFilters}
           liveParams={params} liveFilters={filters}
           dirty={dirty} onCommit={commit} onRevert={revert}
+          solverMeta={studyResult ? studyResult.meta : null}
         />
 
         <main className="main">
@@ -1176,7 +1237,7 @@ function App() {
 
               <CASList advisories={advisories} ackedCAS={ackedCAS} onResetCAS={resetCAS}/>
 
-              <SensitivityStrip cfg={selectedCfg} dv={dv} setDV={setDV} dryMass={params.dryMass} feasible={feasible} alarmState={alarmState} advisories={advisories} minTWR={filters.minTWR}/>
+              <SensitivityStrip cfg={selectedCfg} dv={dv} setDV={commitDV} dryMass={params.dryMass} feasible={feasible} alarmState={alarmState} advisories={advisories} minTWR={filters.minTWR}/>
 
               <div className="tabs">
                 <div className={`tab ${tab==='ranked'?'active':''}`} onClick={()=>setTab('ranked')}>Ranked Trade <span className="tab-count">{feasible.length}</span></div>

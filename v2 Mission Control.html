@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Space+Mono:wght@400;700&family=Major+Mono+Display&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="style-v2.css?v=20"/>
+<link rel="stylesheet" href="style-v2.css?v=22"/>
 </head>
 <body>
 <div id="root"></div>
@@ -16,10 +16,23 @@
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
 
-<script src="data.js?v=31"></script>
+<!-- Solver (ported from tank_selector.py; runs client-side) -->
+<!-- Data modules (auto-generated from Python via tools/export_catalog.py) -->
+<script src="solver/tanks-data.js?v=36"></script>
+<script src="solver/engines-data.js?v=36"></script>
+<!-- Behaviour modules (hand-written) -->
+<script src="solver/constants.js?v=36"></script>
+<script src="solver/tanks.js?v=36"></script>
+<script src="solver/engines.js?v=36"></script>
+<script src="solver/pressurant.js?v=36"></script>
+<script src="solver/sizer.js?v=36"></script>
+<script src="solver/tradeStudy.js?v=36"></script>
+<script src="solver/adapter.js?v=37"></script>
+
+<script src="data.js?v=36"></script>
 <script src="pid.js?v=31"></script>
 <script src="scatter.js?v=31"></script>
 <script>window.MARK_BLOCK = 'MK 2 BLK 18 MOD 1';</script>
-<script type="text/babel" src="app.jsx?v=35"></script>
+<script type="text/babel" src="app.jsx?v=38"></script>
 </body>
 </html>
