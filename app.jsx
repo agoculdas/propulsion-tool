@@ -22,7 +22,7 @@ function StatusPill({ status }) {
 // ─────────────────────────────────────────────────────────────
 // Sidebar
 // ─────────────────────────────────────────────────────────────
-function Sidebar({ params, setParams, filters, setFilters }) {
+function Sidebar({ params, setParams, filters, setFilters, dirty, onCommit, onRevert }) {
   const toggleMode = m => {
     const next = new Set(filters.modes);
     next.has(m) ? next.delete(m) : next.add(m);
@@ -112,7 +112,119 @@ function Sidebar({ params, setParams, filters, setFilters }) {
           <div>RUNTIME: 47 ms</div>
         </div>
       </div>
+
+      <MasterArm dirty={dirty} onCommit={onCommit} onRevert={onRevert}/>
     </aside>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// MasterArm — red-guarded toggle at the bottom of the sidebar.
+// Click the guard to lift it. Click the toggle to commit draft → live.
+// State:
+//   idle       : guard closed, no pending changes, LED green nominal
+//   pending    : guard closed, draft dirty, LED amber blink
+//   unguarded  : guard lifted, toggle SAFE (down), waiting for user
+//   armed      : toggle thrown UP, commit fires, LED green pulse,
+//                then guard auto-closes after 700ms
+// ─────────────────────────────────────────────────────────────
+function MasterArm({ dirty, onCommit, onRevert }) {
+  const [guardOpen, setGuardOpen] = useState(false);
+  const [armed, setArmed] = useState(false);
+  const armTimer = useRef(null);
+
+  // When draft goes clean, retract everything
+  useEffect(() => {
+    if (!dirty && !armed) setGuardOpen(false);
+  }, [dirty, armed]);
+
+  const lift = () => {
+    if (armed) return;
+    setGuardOpen(true);
+  };
+  const close = () => {
+    if (armed) return;
+    setGuardOpen(false);
+  };
+  const fire = () => {
+    if (!guardOpen || armed) return;
+    setArmed(true);
+    onCommit();
+    clearTimeout(armTimer.current);
+    armTimer.current = setTimeout(() => {
+      setArmed(false);
+      setGuardOpen(false);
+    }, 750);
+  };
+
+  let status = 'idle';
+  if (armed) status = 'armed';
+  else if (guardOpen) status = 'unguarded';
+  else if (dirty) status = 'pending';
+
+  return (
+    <div className={`master-arm master-arm-${status}`}>
+      <div className="ma-plate">
+        <div className="ma-plate-top">
+          <span className="ma-plate-lbl">ARM / COMMIT CONFIG</span>
+          <span className="ma-plate-sn">SN-04-1129</span>
+        </div>
+        <div className="ma-housing">
+          <div className="ma-rail-l"/>
+          <div className="ma-rail-r"/>
+          {/* Hinge pins (render above the guard) */}
+          <div className="ma-hinge ma-hinge-l"/>
+          <div className="ma-hinge ma-hinge-r"/>
+
+          {/* The actual toggle — sits inside the housing */}
+          <button
+            className={`ma-toggle ${armed ? 'up' : 'down'}`}
+            onClick={fire}
+            disabled={!guardOpen || armed}
+            aria-label="Commit configuration"
+          >
+            <span className="ma-toggle-shaft"/>
+            <span className="ma-toggle-ball"/>
+          </button>
+
+          {/* Label banks on the housing face */}
+          <div className="ma-label ma-label-safe">SAFE</div>
+          <div className="ma-label ma-label-arm">ARM</div>
+
+          {/* The flip-up red safety guard */}
+          <div
+            className={`ma-guard ${guardOpen ? 'open' : 'closed'}`}
+            onClick={guardOpen ? close : lift}
+            role="button"
+            aria-label={guardOpen ? 'Lower guard' : 'Lift guard'}
+          >
+            <div className="ma-guard-face">
+              <div className="ma-guard-chevrons"/>
+              <div className="ma-guard-engrave">LIFT GUARD</div>
+              <div className="ma-guard-screw ma-guard-screw-tl"/>
+              <div className="ma-guard-screw ma-guard-screw-tr"/>
+              <div className="ma-guard-screw ma-guard-screw-bl"/>
+              <div className="ma-guard-screw ma-guard-screw-br"/>
+            </div>
+            <div className="ma-guard-edge"/>
+          </div>
+        </div>
+
+        {/* Status strip: LED + message + revert */}
+        <div className="ma-status">
+          <div className={`ma-led ma-led-${status}`}/>
+          <div className="ma-status-txt">
+            {status === 'idle' && 'CONFIG LIVE · NOMINAL'}
+            {status === 'pending' && 'DRAFT PENDING · LIFT GUARD TO ARM'}
+            {status === 'unguarded' && 'SAFE · THROW SWITCH TO ARM'}
+            {status === 'armed' && 'ARMED · CONFIG COMMITTED'}
+          </div>
+          {dirty && !armed && (
+            <button className="ma-revert" onClick={onRevert}>REVERT</button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -171,10 +283,10 @@ function Lamp({ kind, on, l1, l2, sub }) {
 // ─────────────────────────────────────────────────────────────
 // Hero: Top config with P&ID schematic + metrics
 // ─────────────────────────────────────────────────────────────
-function HeroTopConfig({ cfg, dv, selectedId, setSelectedId, feasible }) {
-  const recalc = dv === BASELINE.deltaV ? cfg.budget : (() => {
-    const r = recalcForDV(cfg, dv);
-    return { ...cfg.budget, prop: r.prop, wet: r.wet, frac: r.frac };
+function HeroTopConfig({ cfg, dv, selectedId, setSelectedId, feasible, dryMass }) {
+  const recalc = (() => {
+    const r = recalcForDV(cfg, dv, dryMass);
+    return { ...cfg.budget, dry: dryMass, prop: r.prop, wet: r.wet, frac: r.frac };
   })();
   const wetDelta = recalc.wet - cfg.budget.wet;
 
@@ -277,8 +389,8 @@ function HeroTopConfig({ cfg, dv, selectedId, setSelectedId, feasible }) {
 // ─────────────────────────────────────────────────────────────
 // Sensitivity slider strip
 // ─────────────────────────────────────────────────────────────
-function SensitivityStrip({ cfg, dv, setDV }) {
-  const r = recalcForDV(cfg, dv);
+function SensitivityStrip({ cfg, dv, setDV, dryMass }) {
+  const r = recalcForDV(cfg, dv, dryMass);
   const base = cfg.budget.wet;
   const delta = r.wet - base;
   const pct = (delta / base) * 100;
@@ -549,13 +661,44 @@ function DetailView({ cfg }) {
 // App
 // ─────────────────────────────────────────────────────────────
 function App() {
-  const [params, setParams] = useState({ dryMass: 500, deltaV: 300 });
-  const [dv, setDV] = useState(300);
-  const [filters, setFilters] = useState({
+  // "draft" state = sidebar inputs. "live" state = what the main view uses.
+  // The master-arm switch at the bottom of the sidebar commits draft → live.
+  const [draftParams, setDraftParams] = useState({ dryMass: 500, deltaV: 300 });
+  const [draftFilters, setDraftFilters] = useState({
     modes: new Set(['Mono','Biprop','Green']),
     fuels: new Set(['N2H4','MMH','LMP-103S']),
     minT: 0, maxT: 10000, heritage: 1, noItar: false, maxCx: 5,
   });
+  const [params, setLiveParams] = useState(draftParams);
+  const [filters, setLiveFilters] = useState(draftFilters);
+
+  // Dirty check — any draft field differs from live?
+  const dirty = useMemo(() => {
+    if (draftParams.dryMass !== params.dryMass) return true;
+    if (draftParams.deltaV !== params.deltaV) return true;
+    const f = draftFilters, g = filters;
+    if (f.minT !== g.minT || f.maxT !== g.maxT) return true;
+    if (f.heritage !== g.heritage) return true;
+    if (f.noItar !== g.noItar) return true;
+    if (f.maxCx !== g.maxCx) return true;
+    const eqSet = (a,b) => a.size === b.size && [...a].every(x => b.has(x));
+    if (!eqSet(f.modes, g.modes)) return true;
+    if (!eqSet(f.fuels, g.fuels)) return true;
+    return false;
+  }, [draftParams, draftFilters, params, filters]);
+
+  const commit = () => {
+    setLiveParams(draftParams);
+    setLiveFilters({ ...draftFilters, modes: new Set(draftFilters.modes), fuels: new Set(draftFilters.fuels) });
+  };
+  const revert = () => {
+    setDraftParams(params);
+    setDraftFilters({ ...filters, modes: new Set(filters.modes), fuels: new Set(filters.fuels) });
+  };
+
+  const [dv, setDV] = useState(300);
+  // Sidebar ΔV → sensitivity slider baseline (applied on commit)
+  useEffect(() => { setDV(params.deltaV); }, [params.deltaV]);
   const [tab, setTab] = useState('ranked'); // ranked | compare | detail
   const [pinned, setPinned] = useState(() => {
     try { const s = localStorage.getItem('pinned-v1'); return new Set(s ? JSON.parse(s) : ['C01','C03','C05']); }
@@ -564,9 +707,17 @@ function App() {
 
   useEffect(() => { try { localStorage.setItem('pinned-v1', JSON.stringify([...pinned])); } catch {} }, [pinned]);
 
+  // Mode → default fuel mapping used by the fuel-filter chips
+  const fuelForMode = { Mono: 'N2H4', Biprop: 'MMH', Green: 'LMP-103S' };
+
   const feasible = useMemo(() => {
-    return CONFIGS.filter(c => {
+    return CONFIGS.map(c => {
+      // recompute budget so sidebar dryMass + deltaV actually flow through
+      const r = recalcForDV(c, params.deltaV, params.dryMass);
+      return { ...c, budget: { ...c.budget, dry: params.dryMass, prop: r.prop, wet: r.wet, frac: r.frac } };
+    }).filter(c => {
       if (!filters.modes.has(c.engine.mode)) return false;
+      if (!filters.fuels.has(fuelForMode[c.engine.mode])) return false;
       if (c.engine.thrust < filters.minT || c.engine.thrust > filters.maxT) return false;
       if (filters.heritage === 0 && c.engine.status !== 'COTS') return false;
       if (filters.heritage === 1 && c.engine.status === 'Dev') return false;
@@ -574,7 +725,7 @@ function App() {
       if (c.engine.cx > filters.maxCx) return false;
       return true;
     }).sort((a,b) => a.budget.wet - b.budget.wet);
-  }, [filters]);
+  }, [filters, params.dryMass, params.deltaV]);
 
   const [selectedId, setSelectedIdRaw] = useState(() => {
     try { return localStorage.getItem('selected-v1') || 'C01'; } catch { return 'C01'; }
@@ -592,9 +743,8 @@ function App() {
 
   // Master alarm state — drives UI-wide amber/red propagation
   const selectedRecalc = useMemo(() => {
-    if (dv === BASELINE.deltaV) return selectedCfg.budget;
-    return { ...selectedCfg.budget, ...recalcForDV(selectedCfg, dv) };
-  }, [selectedCfg, dv]);
+    return { ...selectedCfg.budget, ...recalcForDV(selectedCfg, dv, params.dryMass) };
+  }, [selectedCfg, dv, params.dryMass]);
   const alarmState =
     selectedRecalc.frac >= 0.90 ? 'warning' :
     selectedRecalc.frac >= 0.80 ? 'caution' : 'nominal';
@@ -629,7 +779,11 @@ function App() {
       </header>
 
       <div className="layout">
-        <Sidebar params={params} setParams={setParams} filters={filters} setFilters={setFilters}/>
+        <Sidebar
+          params={draftParams} setParams={setDraftParams}
+          filters={draftFilters} setFilters={setDraftFilters}
+          dirty={dirty} onCommit={commit} onRevert={revert}
+        />
 
         <main className="main">
           {feasible.length === 0 ? (
@@ -639,9 +793,9 @@ function App() {
             </div>
           ) : (
             <>
-              <HeroTopConfig cfg={selectedCfg} dv={dv} selectedId={selectedId} setSelectedId={setSelectedId} feasible={feasible}/>
+              <HeroTopConfig cfg={selectedCfg} dv={dv} selectedId={selectedId} setSelectedId={setSelectedId} feasible={feasible} dryMass={params.dryMass}/>
 
-              <SensitivityStrip cfg={selectedCfg} dv={dv} setDV={setDV}/>
+              <SensitivityStrip cfg={selectedCfg} dv={dv} setDV={setDV} dryMass={params.dryMass}/>
 
               <div className="tabs">
                 <div className={`tab ${tab==='ranked'?'active':''}`} onClick={()=>setTab('ranked')}>Ranked Trade <span className="tab-count">{feasible.length}</span></div>

@@ -102,12 +102,12 @@ window.BASELINE = { dryMass: 500, deltaV: 300, g0: 9.80665 };
 
 // Sensitivity: how wet mass scales with ΔV at fixed dry + Isp
 // Δm_prop/m_wet depends on Isp; compute reactive budget for slider
-window.recalcForDV = function(cfg, newDV) {
+window.recalcForDV = function(cfg, newDV, dryMassOverride) {
   const g0 = 9.80665;
   const ve = cfg.engine.isp * g0;
-  const dry = cfg.budget.dry + cfg.budget.eng + cfg.budget.fTk + cfg.budget.oTk + cfg.budget.prs;
-  // m_prop = dry * (exp(dv/ve) - 1)
+  const baseDry = (dryMassOverride != null ? dryMassOverride : cfg.budget.dry);
+  const dry = baseDry + cfg.budget.eng + cfg.budget.fTk + cfg.budget.oTk + cfg.budget.prs;
   const mp = dry * (Math.exp(newDV / ve) - 1);
   const wet = dry + mp;
-  return { prop: mp, wet: wet, frac: (cfg.budget.eng + cfg.budget.fTk + cfg.budget.oTk + cfg.budget.prs + mp) / wet };
+  return { prop: mp, wet: wet, frac: (cfg.budget.eng + cfg.budget.fTk + cfg.budget.oTk + cfg.budget.prs + mp) / wet, dry: baseDry };
 };

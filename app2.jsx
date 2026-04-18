@@ -131,8 +131,8 @@ function MissionPanel({ params, setParams, dv, setDV, filters, setFilters }) {
 }
 
 // ───────────────────── Quadrant 2: Schematic hero ─────────────────────
-function SchematicHero({ cfg, dv }) {
-  const r = recalcForDV(cfg, dv);
+function SchematicHero({ cfg, dv, dryMass }) {
+  const r = recalcForDV(cfg, dv, dryMass);
 
   return (
     <div className="hud-panel hero-panel">
@@ -371,9 +371,15 @@ function App() {
   });
   useEffect(() => { try { localStorage.setItem('pinned-v2', JSON.stringify([...pinned])); } catch {} }, [pinned]);
 
+  const fuelForMode = { Mono: 'N2H4', Biprop: 'MMH', Green: 'LMP-103S' };
+
   const feasible = useMemo(() => {
-    return CONFIGS.filter(c => {
+    return CONFIGS.map(c => {
+      const r = recalcForDV(c, dv, params.dryMass);
+      return { ...c, budget: { ...c.budget, dry: params.dryMass, prop: r.prop, wet: r.wet, frac: r.frac } };
+    }).filter(c => {
       if (!filters.modes.has(c.engine.mode)) return false;
+      if (!filters.fuels.has(fuelForMode[c.engine.mode])) return false;
       if (c.engine.thrust < filters.minT || c.engine.thrust > filters.maxT) return false;
       if (filters.heritage === 0 && c.engine.status !== 'COTS') return false;
       if (filters.heritage === 1 && c.engine.status === 'Dev') return false;
@@ -381,7 +387,7 @@ function App() {
       if (c.engine.cx > filters.maxCx) return false;
       return true;
     }).sort((a,b) => a.budget.wet - b.budget.wet);
-  }, [filters]);
+  }, [filters, params.dryMass, dv]);
 
   const [selectedId, setSelectedIdRaw] = useState(() => {
     try { return localStorage.getItem('selected-v2') || 'C01'; } catch { return 'C01'; }
@@ -407,7 +413,7 @@ function App() {
       <main className="hud-grid">
         <MissionPanel params={params} setParams={setParams} dv={dv} setDV={setDV} filters={filters} setFilters={setFilters}/>
         {feasible.length > 0
-          ? <SchematicHero cfg={selectedCfg} dv={dv}/>
+          ? <SchematicHero cfg={selectedCfg} dv={dv} dryMass={params.dryMass}/>
           : <div className="hud-panel hero-panel"><div className="hp-head"><span className="hp-id">02</span><span>LOCK</span></div><div className="hp-body"><div className="empty-panel"><div className="ep-title" style={{color:'var(--lock)'}}>NO FEASIBLE LOCK</div><div className="ep-sub">Relax constraints in panel 01</div></div></div></div>}
         <TradeSpace configs={feasible} selectedId={selectedId} setSelectedId={setSelectedId} pinned={pinned} togglePin={togglePin}/>
         <TrackedList configs={feasible} selectedId={selectedId} setSelectedId={setSelectedId} pinned={pinned} togglePin={togglePin}/>

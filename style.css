@@ -1712,3 +1712,409 @@ body.alarm-caution::after {
 
 /* Overrides in case two ::before rules collide — body already has one
    (grid paper). Use a later pseudo layer instead. */
+
+/* ============================================================
+   MASTER ARM SWITCH — skeuomorphic guarded toggle
+   bottom of sidebar. Commits draft → live.
+   States: idle | pending | unguarded | armed
+   ============================================================ */
+
+.master-arm {
+  margin-top: 18px;
+  user-select: none;
+}
+
+/* === Mounting plate ========================================= */
+.ma-plate {
+  position: relative;
+  padding: 10px 12px 12px;
+  background:
+    linear-gradient(145deg, #1c232a 0%, #141a1f 50%, #0e1317 100%);
+  border: 1px solid #2a333c;
+  border-radius: 4px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.04),
+    inset 0 -1px 0 rgba(0,0,0,0.5),
+    0 3px 8px rgba(0,0,0,0.55);
+}
+.ma-plate::before,
+.ma-plate::after {
+  content: '';
+  position: absolute;
+  width: 6px; height: 6px;
+  background: radial-gradient(circle at 35% 30%, #7c8692 0%, #3c454f 55%, #1a2028 100%);
+  border-radius: 50%;
+  box-shadow:
+    inset 0 -1px 1px rgba(0,0,0,0.6),
+    inset 0 1px 0 rgba(255,255,255,0.25),
+    0 1px 1px rgba(0,0,0,0.6);
+}
+.ma-plate::before { top: 4px; left: 4px; }
+.ma-plate::after  { top: 4px; right: 4px; }
+
+.ma-plate-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0 6px 6px;
+  margin-bottom: 8px;
+  border-bottom: 1px dashed rgba(255,255,255,0.08);
+}
+.ma-plate-lbl {
+  font-family: var(--font-display), 'Share Tech Mono', monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.22em;
+  color: #aab4bd;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.6);
+}
+.ma-plate-sn {
+  font-family: var(--font-display), 'Share Tech Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: #5f6b75;
+  white-space: nowrap;
+}
+
+/* === Housing ================================================ */
+.ma-housing {
+  position: relative;
+  height: 128px;
+  background:
+    /* subtle brushed steel */
+    repeating-linear-gradient(
+      90deg,
+      rgba(255,255,255,0.018) 0 1px,
+      transparent 1px 2px
+    ),
+    linear-gradient(180deg, #2a323b 0%, #1a2028 48%, #0e1318 100%);
+  border: 1px solid #0a0e12;
+  border-radius: 3px;
+  box-shadow:
+    inset 0 2px 3px rgba(0,0,0,0.55),
+    inset 0 -1px 0 rgba(255,255,255,0.04);
+  overflow: hidden;
+  perspective: 480px;
+  perspective-origin: 50% 100%;
+}
+
+/* Diagonal rail etchings to either side of the toggle */
+.ma-rail-l, .ma-rail-r {
+  position: absolute;
+  top: 20px;
+  width: 4px;
+  height: 88px;
+  background: linear-gradient(180deg, #0a0e12 0%, #1a2028 100%);
+  box-shadow:
+    inset 1px 0 0 rgba(255,255,255,0.04),
+    inset -1px 0 0 rgba(0,0,0,0.6);
+}
+.ma-rail-l { left: 22px; }
+.ma-rail-r { right: 22px; }
+
+/* Hinge pins — the guard pivots around these */
+.ma-hinge {
+  position: absolute;
+  bottom: 10px;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 30%, #c8ced3 0%, #8a9199 30%, #3f464d 70%, #1a1f24 100%);
+  box-shadow:
+    inset 0 -1px 1px rgba(0,0,0,0.6),
+    inset 0 1px 1px rgba(255,255,255,0.45),
+    0 1px 2px rgba(0,0,0,0.6);
+  z-index: 5;
+}
+.ma-hinge-l { left: 10px; }
+.ma-hinge-r { right: 10px; }
+
+/* === SAFE/ARM labels etched on housing ====================== */
+.ma-label {
+  position: absolute;
+  left: 0; right: 0;
+  text-align: center;
+  font-family: var(--font-display), 'Share Tech Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: #5a6570;
+  text-shadow:
+    0 1px 0 rgba(0,0,0,0.7),
+    0 -1px 0 rgba(255,255,255,0.04);
+  pointer-events: none;
+}
+.ma-label-arm  { top: 14px; color: #5a6570; }
+.ma-label-safe { bottom: 14px; color: #5a6570; }
+/* Unguarded: toggle still in SAFE — SAFE label lit steady green (safe nominal) */
+.master-arm-unguarded .ma-label-safe { color: var(--radar); text-shadow: 0 0 8px rgba(110,224,106,0.8), 0 1px 0 rgba(0,0,0,0.7); }
+/* Armed: toggle thrown to ARM — ARM label lit flashing amber (armed / hot) */
+.master-arm-armed .ma-label-arm { color: #f5b041; text-shadow: 0 0 8px rgba(245,176,65,0.9), 0 1px 0 rgba(0,0,0,0.7); animation: maLedBlink 600ms ease-in-out infinite; }
+.master-arm-unguarded .ma-label-arm  { color: #5a6570; text-shadow: 0 1px 0 rgba(0,0,0,0.7); }
+.master-arm-armed .ma-label-arm      { color: #f5b041; text-shadow: 0 0 8px rgba(245,176,65,0.9), 0 1px 0 rgba(0,0,0,0.7); }
+
+/* === Toggle ================================================= */
+.ma-toggle {
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  transform: translate(-50%, -50%);
+  width: 38px; height: 70px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  transform-origin: 50% 88%;
+  transition: transform 280ms cubic-bezier(.5,.05,.25,1);
+  z-index: 3;
+}
+.ma-toggle[disabled] { cursor: not-allowed; }
+.ma-toggle.down {
+  transform: translate(-50%, -50%) rotate(28deg);
+}
+.ma-toggle.up {
+  transform: translate(-50%, -50%) rotate(-28deg);
+}
+
+/* Shaft (chrome cylinder) */
+.ma-toggle-shaft {
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  width: 10px; height: 54px;
+  transform: translateX(-50%);
+  background: linear-gradient(
+    90deg,
+    #2a2f34 0%,
+    #8a9099 18%,
+    #c8ced3 35%,
+    #e0e4e8 50%,
+    #c8ced3 65%,
+    #8a9099 82%,
+    #2a2f34 100%
+  );
+  border-radius: 2px 2px 1px 1px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.45),
+    0 1px 2px rgba(0,0,0,0.7);
+}
+
+/* Ball tip */
+.ma-toggle-ball {
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  transform: translateX(-50%);
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 32% 30%, #fafcfd 0%, #c0c7ce 28%, #7a8088 60%, #2a2f34 100%);
+  box-shadow:
+    inset 0 -2px 3px rgba(0,0,0,0.55),
+    inset 0 2px 2px rgba(255,255,255,0.6),
+    0 2px 4px rgba(0,0,0,0.65);
+}
+
+/* === Safety guard =========================================== */
+.ma-guard {
+  position: absolute;
+  left: 8px; right: 8px;
+  bottom: 6px;
+  height: 106px;
+  transform-origin: 50% 100%;
+  transform: rotateX(0deg);
+  transform-style: preserve-3d;
+  transition: transform 450ms cubic-bezier(.5,.05,.25,1);
+  cursor: pointer;
+  z-index: 4;
+}
+.ma-guard.open {
+  transform: rotateX(-85deg);
+}
+.ma-guard-face {
+  position: absolute;
+  inset: 0;
+  border-radius: 4px 4px 2px 2px;
+  background:
+    /* hazard chevrons fallback via overlay */
+    linear-gradient(180deg, #d72a2a 0%, #a81e1e 55%, #7a1414 100%);
+  border: 1px solid #4a0a0a;
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,0.25),
+    inset 0 -2px 3px rgba(0,0,0,0.4),
+    0 3px 5px rgba(0,0,0,0.6);
+  overflow: hidden;
+}
+.ma-guard-face::before {
+  /* subtle anodized grain */
+  content: '';
+  position: absolute; inset: 0;
+  background:
+    repeating-linear-gradient(
+      105deg,
+      rgba(255,255,255,0.04) 0 2px,
+      transparent 2px 5px
+    );
+  pointer-events: none;
+}
+.ma-guard-face::after {
+  /* top highlight */
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 28px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.25), rgba(255,255,255,0));
+  pointer-events: none;
+}
+.ma-guard-chevrons {
+  position: absolute;
+  left: 6px; right: 6px;
+  top: 12px;
+  height: 14px;
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      #1a0404 0 6px,
+      #f0d040 6px 12px
+    );
+  border: 1px solid rgba(0,0,0,0.4);
+  border-radius: 1px;
+  box-shadow: inset 0 -1px 1px rgba(0,0,0,0.3);
+}
+.ma-guard-engrave {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: 14px;
+  text-align: center;
+  font-family: var(--font-display), 'Share Tech Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  color: #2a0808;
+  text-shadow:
+    0 1px 0 rgba(255,255,255,0.25),
+    0 -1px 0 rgba(0,0,0,0.4);
+}
+.ma-guard-screw {
+  position: absolute;
+  width: 5px; height: 5px;
+  background: radial-gradient(circle at 35% 30%, #b0b8bf 0%, #6a727a 40%, #2a3036 85%, #0c0f13 100%);
+  border-radius: 50%;
+  box-shadow:
+    inset 0 -1px 1px rgba(0,0,0,0.5),
+    inset 0 1px 0 rgba(255,255,255,0.3);
+}
+.ma-guard-screw::after {
+  content: '';
+  position: absolute; inset: 1px;
+  background: linear-gradient(45deg, transparent 40%, rgba(0,0,0,0.6) 45%, rgba(0,0,0,0.6) 55%, transparent 60%);
+  border-radius: 50%;
+}
+.ma-guard-screw-tl { top: 3px; left: 3px; }
+.ma-guard-screw-tr { top: 3px; right: 3px; }
+.ma-guard-screw-bl { bottom: 3px; left: 3px; }
+.ma-guard-screw-br { bottom: 3px; right: 3px; }
+
+/* the thin edge you see when it's open */
+.ma-guard-edge {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: -3px;
+  height: 3px;
+  background: linear-gradient(180deg, #7a1414 0%, #3a0a0a 100%);
+  border-radius: 0 0 2px 2px;
+}
+
+/* === Status strip =========================================== */
+.ma-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 6px 8px;
+  background: #0a0e12;
+  border: 1px solid #1a2028;
+  border-radius: 2px;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.6);
+}
+.ma-led {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: #2a3036;
+  box-shadow:
+    inset 0 -1px 1px rgba(0,0,0,0.6),
+    inset 0 1px 1px rgba(255,255,255,0.05);
+}
+.ma-led-idle {
+  background: radial-gradient(circle at 35% 30%, #9cffab 0%, #4dd069 40%, #1f5a2c 100%);
+  box-shadow:
+    0 0 6px rgba(110,224,106,0.6),
+    inset 0 -1px 1px rgba(0,0,0,0.4);
+}
+.ma-led-pending {
+  background: radial-gradient(circle at 35% 30%, #ffe08a 0%, #f5b041 40%, #6a4a10 100%);
+  box-shadow:
+    0 0 8px rgba(245,176,65,0.8),
+    inset 0 -1px 1px rgba(0,0,0,0.4);
+  animation: maLedBlink 1000ms ease-in-out infinite;
+}
+.ma-led-unguarded {
+  background: radial-gradient(circle at 35% 30%, #bcffc6 0%, #6ee06a 40%, #2a7a30 100%);
+  box-shadow:
+    0 0 10px rgba(110,224,106,0.9),
+    inset 0 -1px 1px rgba(0,0,0,0.4);
+}
+.ma-led-armed {
+  background: radial-gradient(circle at 35% 30%, #ffe08a 0%, #f5b041 40%, #6a4a10 100%);
+  box-shadow:
+    0 0 14px rgba(245,176,65,1),
+    0 0 24px rgba(245,176,65,0.6),
+    inset 0 -1px 1px rgba(0,0,0,0.4);
+  animation: maLedBlink 600ms ease-in-out infinite;
+}
+@keyframes maLedBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+.ma-status-txt {
+  flex: 1;
+  font-family: var(--font-display), 'Share Tech Mono', monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  color: #8a96a0;
+  text-transform: uppercase;
+}
+.master-arm-pending   .ma-status-txt { color: #f5b041; text-shadow: 0 0 4px rgba(245,176,65,0.4); }
+.master-arm-unguarded .ma-status-txt { color: var(--radar); text-shadow: 0 0 6px rgba(110,224,106,0.6); }
+.master-arm-armed     .ma-status-txt { color: #f5b041; text-shadow: 0 0 6px rgba(245,176,65,0.7); animation: maLedBlink 600ms ease-in-out infinite; }
+
+.ma-revert {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  background: #1a2028;
+  border: 1px solid #3a454f;
+  color: #aab4bd;
+  font-family: var(--font-display), 'Share Tech Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  cursor: pointer;
+  border-radius: 1px;
+}
+.ma-revert:hover {
+  background: #242c36;
+  color: #dfe5eb;
+  border-color: #556270;
+}
+.ma-revert:active { transform: translateY(1px); }
+
+/* When idle (no draft changes), dim the whole thing slightly */
+.master-arm-idle .ma-housing,
+.master-arm-idle .ma-plate-lbl { opacity: 0.72; }
+
+/* When armed, add a soft green glow around the plate */
+.master-arm-armed .ma-plate {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.04),
+    inset 0 -1px 0 rgba(0,0,0,0.5),
+    0 0 18px rgba(110,224,106,0.45),
+    0 3px 8px rgba(0,0,0,0.55);
+}
