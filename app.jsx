@@ -318,13 +318,18 @@ function MasterArm({ dirty, onCommit, onRevert, params, liveParams, filters, liv
               <>
                 <div className="ma-diff-row live">
                   <span className="ma-diff-tag">LIVE</span>
-                  <span className="ma-diff-k">{primaryDiff.k}</span>
-                  <span className="ma-diff-v">{fmtN(primaryDiff.live)}<span className="ma-diff-u">{primaryDiff.unit}</span></span>
+                  <span className="ma-diff-kv">
+                    <span className="ma-diff-k">{primaryDiff.k}</span>
+                    <span className="ma-diff-v">{fmtN(primaryDiff.live)}{primaryDiff.unit && <span className="ma-diff-u"> {primaryDiff.unit}</span>}</span>
+                  </span>
                 </div>
                 <div className="ma-diff-row draft">
                   <span className="ma-diff-tag">DRAFT</span>
-                  <span className="ma-diff-k">{primaryDiff.k}</span>
-                  <span className="ma-diff-v hi">{fmtN(primaryDiff.draft)}<span className="ma-diff-u">{primaryDiff.unit}</span> <span className={`ma-diff-arr ${arrow==='↑'?'up':arrow==='↓'?'down':''}`}>{arrow}</span></span>
+                  <span className="ma-diff-kv">
+                    <span className="ma-diff-k">{primaryDiff.k}</span>
+                    <span className="ma-diff-v hi">{fmtN(primaryDiff.draft)}{primaryDiff.unit && <span className="ma-diff-u"> {primaryDiff.unit}</span>}</span>
+                    {arrow && <span className={`ma-diff-arr ${arrow==='↑'?'up':arrow==='↓'?'down':''}`}>{arrow}</span>}
+                  </span>
                 </div>
                 {extraDiffs > 0 && <div className="ma-diff-more">+{extraDiffs} MORE CHANGED</div>}
               </>
