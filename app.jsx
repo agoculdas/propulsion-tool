@@ -19,6 +19,65 @@ function StatusPill({ status }) {
   return <span className={`status-pill ${cls}`}>{label}</span>;
 }
 
+// Three-tier advisory severity: ADVISORY < CAUTION < WARNING.
+// Normalizes raw cfg.warnings (which use INFO/CAUTION) and merges derived
+// alarms from runtime state (prop fraction, complexity, TWR req).
+function buildAdvisories(cfg, recalc, minTWR) {
+  const twr = cfg.engine.thrust / Math.max(0.001, recalc.wet * 9.81);
+  const adv = [];
+
+  // Propellant margin — same thresholds as master caution/warning lamps
+  if (recalc.frac >= 0.90) {
+    adv.push({ sev:'WARNING', src:'MARGIN', msg:`Prop fraction ${(recalc.frac*100).toFixed(1)}% ≥ 90% — tyranny of Δv.` });
+  } else if (recalc.frac >= 0.80) {
+    adv.push({ sev:'CAUTION', src:'MARGIN', msg:`Prop fraction ${(recalc.frac*100).toFixed(1)}% ≥ 80% — low reserve.` });
+  }
+
+  // Complexity 5/5
+  if (cfg.engine.cx >= 5) {
+    adv.push({ sev:'WARNING', src:'COMPLEXITY', msg:`Engine complexity 5/5 — max. New qual path, schedule risk.` });
+  } else if (cfg.engine.cx === 4) {
+    adv.push({ sev:'CAUTION', src:'COMPLEXITY', msg:`Engine complexity 4/5 — high integration burden.` });
+  }
+
+  // Dormant TWR alarm
+  if (twr < minTWR) {
+    adv.push({ sev:'WARNING', src:'TWR', msg:`Initial T/W ${twr.toFixed(3)} below requirement ${minTWR.toFixed(3)}.` });
+  } else if (twr < minTWR * 1.15) {
+    adv.push({ sev:'CAUTION', src:'TWR', msg:`Initial T/W ${twr.toFixed(3)} within 15% of requirement.` });
+  }
+
+  // Normalize raw warnings authored on the config (INFO → ADVISORY)
+  (cfg.warnings || []).forEach(w => {
+    const sev = w.sev === 'INFO' ? 'ADVISORY' : (w.sev || 'ADVISORY').toUpperCase();
+    adv.push({ sev, src:'CONFIG', msg: w.msg });
+  });
+
+  // Sort WARNING → CAUTION → ADVISORY
+  const rank = { WARNING: 0, CAUTION: 1, ADVISORY: 2 };
+  adv.sort((a,b) => (rank[a.sev]||9) - (rank[b.sev]||9));
+
+  const counts = {
+    WARNING: adv.filter(a => a.sev === 'WARNING').length,
+    CAUTION: adv.filter(a => a.sev === 'CAUTION').length,
+    ADVISORY: adv.filter(a => a.sev === 'ADVISORY').length,
+  };
+  counts.total = adv.length;
+  counts.top = counts.WARNING ? 'WARNING' : counts.CAUTION ? 'CAUTION' : counts.ADVISORY ? 'ADVISORY' : 'NOMINAL';
+  return { items: adv, counts, twr };
+}
+
+// Live UTC clock — ticks once a second, formatted like "2026-04-18 · 14:32:07Z"
+function useClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const p = n => String(n).padStart(2,'0');
+  return `${now.getUTCFullYear()}-${p(now.getUTCMonth()+1)}-${p(now.getUTCDate())} · ${p(now.getUTCHours())}:${p(now.getUTCMinutes())}:${p(now.getUTCSeconds())}Z`;
+}
+
 // ─────────────────────────────────────────────────────────────
 // Sidebar
 // ─────────────────────────────────────────────────────────────
@@ -99,6 +158,18 @@ function Sidebar({ params, setParams, filters, setFilters, dirty, onCommit, onRe
           <div className="slider-row">
             <input type="range" min="1" max="5" step="1" value={filters.maxCx}
               onChange={e => setFilters({...filters, maxCx: +e.target.value})}/>
+          </div>
+        </div>
+        <div className="field" style={{marginTop: 10}}>
+          <div className="field-label"><span>Min TWR (init)</span><span className="num" style={{color:'var(--lock)'}}>{filters.minTWR.toFixed(3)}</span></div>
+          <div className="slider-row">
+            <span className="num" style={{color:'var(--text-faint)', fontSize:10}}>0</span>
+            <input type="range" min="0" max="0.2" step="0.005" value={filters.minTWR}
+              onChange={e => setFilters({...filters, minTWR: +e.target.value})}/>
+            <span className="num" style={{color:'var(--text-faint)', fontSize:10}}>0.2</span>
+          </div>
+          <div style={{fontFamily:'var(--font-mono)', fontSize:9.5, color:'var(--text-faint)', letterSpacing:'0.08em', marginTop:4}}>
+            DORMANT ALARM IF T/W &lt; REQ
           </div>
         </div>
       </div>
@@ -229,53 +300,138 @@ function MasterArm({ dirty, onCommit, onRevert }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Annunciator panel — skeuomorphic master caution + master warning
-// lamps (cockpit-style). Trigger off fuel fraction.
+// Annunciator panel — ONLY the two master lamps. These reflect the
+// whole-configuration state; they fire only when the mission itself is
+// untenable. Local alarms (complexity, TWR, etc.) do NOT light these.
 //   MASTER CAUTION (amber)  : frac >= 0.80
 //   MASTER WARNING (red)    : frac >= 0.90
 // ─────────────────────────────────────────────────────────────
-function Annunciators({ frac }) {
-  const cautionOn = frac >= 0.80;
-  const warningOn = frac >= 0.90;
+function Annunciators({ frac, ackd, onReset, onTest, testing }) {
+  const cautionActive = frac >= 0.80;
+  const warningActive = frac >= 0.90;
+  const cautionShow = testing ? 'test' : cautionActive ? (ackd.has('caution') ? 'ack' : 'active') : 'off';
+  const warningShow = testing ? 'test' : warningActive ? (ackd.has('warning') ? 'ack' : 'active') : 'off';
   return (
-    <div className="annunciator-bay">
+    <div className="annunciator-bay tall">
       <div className="ann-rails"><span/><span/><span/><span/></div>
       <Lamp
         kind="caution"
-        on={cautionOn}
+        state={cautionShow}
         l1="MASTER"
         l2="CAUTION"
-        sub={cautionOn ? `PROP FRAC ${(frac*100).toFixed(1)}% ≥ 80%` : 'MARGIN NOMINAL'}
+        sub={cautionActive ? `PROP FRAC ${(frac*100).toFixed(1)}% ≥ 80%` : 'MARGIN NOMINAL'}
+        onClick={cautionActive ? onReset : onTest}
+        resetArmed={cautionActive}
       />
       <Lamp
         kind="warning"
-        on={warningOn}
+        state={warningShow}
         l1="MASTER"
         l2="WARNING"
-        sub={warningOn ? `PROP FRAC ${(frac*100).toFixed(1)}% ≥ 90% — TYRANNY OF Δv` : 'BELOW 90% LIMIT'}
+        sub={warningActive ? `PROP FRAC ${(frac*100).toFixed(1)}% ≥ 90% — TYRANNY OF Δv` : 'BELOW 90% LIMIT'}
+        onClick={warningActive ? onReset : onTest}
+        resetArmed={warningActive}
       />
     </div>
   );
 }
 
-function Lamp({ kind, on, l1, l2, sub }) {
+function Lamp({ kind, on, state, l1, l2, sub, onClick, resetArmed }) {
+  // Accept either `on` (boolean legacy) or `state` (off | active | ack | test)
+  const s = state != null ? state : (on ? 'active' : 'off');
+  const onNow = s === 'active' || s === 'test';
+  const isButton = typeof onClick === 'function';
+  const pressLabel = resetArmed ? 'PUSH TO RESET' : 'PRESS TO TEST';
+  const Tag = isButton ? 'button' : 'div';
+  const btnProps = isButton
+    ? { type: 'button', onClick, 'aria-label': `${l1} ${l2} — ${pressLabel}` }
+    : {};
   return (
-    <div className={`lamp lamp-${kind} ${on ? 'on' : 'off'}`}>
+    <Tag className={`lamp lamp-${kind} state-${s} ${onNow ? 'on' : 'off'} ${isButton ? 'lamp-btn' : ''} ${resetArmed ? 'is-armed' : ''}`} {...btnProps}>
       <div className="lamp-bezel">
         <div className="lamp-lens">
           <div className="lamp-glow"/>
           <div className="lamp-face">
             <div className="lamp-l1">{l1}</div>
             <div className="lamp-l2">{l2}</div>
+            {isButton && <div className="lamp-press">{pressLabel}</div>}
           </div>
           <div className="lamp-gloss"/>
           <div className="lamp-screws">
             <span className="scr scr-tl"/><span className="scr scr-tr"/>
             <span className="scr scr-bl"/><span className="scr scr-br"/>
           </div>
+          {s === 'ack' && <div className="lamp-ack-chip">ACK</div>}
         </div>
       </div>
       <div className="lamp-sub">{sub}</div>
+    </Tag>
+  );
+}
+
+// Skeuomorphic round chrome pushbutton used on the annunciator panel
+// and the CAS header (press-to-test / push-to-reset / ack).
+function PressButton({ label, kind, onClick, disabled }) {
+  return (
+    <button
+      className={`press-btn press-btn-${kind} ${disabled ? 'is-disabled' : ''}`}
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+    >
+      <span className="pb-ring"/>
+      <span className="pb-cap">
+        <span className="pb-cap-gloss"/>
+        <span className="pb-cap-label">{label}</span>
+      </span>
+    </button>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// CAS list — Crew Alerting System tape. Rows with an illuminated
+// glyph (W/C/A), a source code, message, and a sequence index.
+// Housed in a ribbed avionics panel to match the skeuomorphic
+// master annunciators, but subordinate — these are the LOCAL items.
+// ─────────────────────────────────────────────────────────────
+function CASList({ advisories, ackedCAS, onResetCAS }) {
+  const { items, counts } = advisories;
+  const glyph = { WARNING: 'W', CAUTION: 'C', ADVISORY: 'A' };
+  const hasAny = items.length > 0;
+  const anyUnacked = items.some(w => !ackedCAS.has(`${w.src}:${w.sev}`));
+  return (
+    <div className="cas-panel">
+      <div className="cas-rails"><span/><span/><span/><span/><span/><span/></div>
+      <div className="cas-head">
+        <span className="cas-head-id">CAS · CREW ALERT LIST</span>
+        <span className="cas-head-meta">
+          <span className={`cas-pip sev-warning ${counts.WARNING ? 'on':''}`}>W·{counts.WARNING}</span>
+          <span className={`cas-pip sev-caution ${counts.CAUTION ? 'on':''}`}>C·{counts.CAUTION}</span>
+          <span className={`cas-pip sev-advisory ${counts.ADVISORY ? 'on':''}`}>A·{counts.ADVISORY}</span>
+          <PressButton label="PUSH TO RESET" kind="reset cas" onClick={onResetCAS} disabled={!hasAny || !anyUnacked}/>
+        </span>
+      </div>
+      <div className="cas-body">
+        {items.length === 0 ? (
+          <div className="cas-empty">— NO LOCAL ALERTS —</div>
+        ) : (
+          items.map((w, i) => {
+            const k = `${w.src}:${w.sev}`;
+            const acked = ackedCAS.has(k);
+            return (
+              <div key={i} className={`cas-row sev-${w.sev.toLowerCase()} ${acked ? 'acked' : ''}`}>
+                <span className={`cas-glyph sev-${w.sev.toLowerCase()}`}>{glyph[w.sev] || '·'}</span>
+                <span className="cas-src">{w.src}</span>
+                <span className="cas-msg">{w.msg}</span>
+                <span className="cas-seq">{acked ? 'ACK' : String(i+1).padStart(3,'0')}</span>
+              </div>
+            );
+          })
+        )}
+      </div>
+      <div className="cas-screws">
+        <span className="scr scr-tl"/><span className="scr scr-tr"/>
+        <span className="scr scr-bl"/><span className="scr scr-br"/>
+      </div>
     </div>
   );
 }
@@ -283,12 +439,18 @@ function Lamp({ kind, on, l1, l2, sub }) {
 // ─────────────────────────────────────────────────────────────
 // Hero: Top config with P&ID schematic + metrics
 // ─────────────────────────────────────────────────────────────
-function HeroTopConfig({ cfg, dv, selectedId, setSelectedId, feasible, dryMass }) {
+function HeroTopConfig({ cfg, dv, selectedId, setSelectedId, feasible, dryMass, advisories, ackedMaster, onResetMaster, onTestMaster, masterTesting }) {
   const recalc = (() => {
     const r = recalcForDV(cfg, dv, dryMass);
     return { ...cfg.budget, dry: dryMass, prop: r.prop, wet: r.wet, frac: r.frac };
   })();
   const wetDelta = recalc.wet - cfg.budget.wet;
+  const twr = advisories.twr;
+  // Alarm flags for inline metric LEDs
+  const fracSev   = advisories.items.find(a => a.src === 'MARGIN')?.sev;
+  const cxSev     = advisories.items.find(a => a.src === 'COMPLEXITY')?.sev;
+  const twrSev    = advisories.items.find(a => a.src === 'TWR')?.sev;
+  const sevClass = sev => sev === 'WARNING' ? 'metric-alarm warning' : sev === 'CAUTION' ? 'metric-alarm caution' : '';
 
   return (
     <section style={{marginBottom: 28}}>
@@ -339,45 +501,41 @@ function HeroTopConfig({ cfg, dv, selectedId, setSelectedId, feasible, dryMass }
                 <div className="metric-val">{fmt(recalc.prop, 1)}<span className="unit"> kg</span></div>
                 <div className="metric-delta">{(recalc.prop/recalc.wet*100).toFixed(1)}% of wet</div>
               </div>
-              <div className="metric">
-                <div className="metric-lbl">Prop Fraction</div>
+              <div className={`metric ${sevClass(fracSev)}`}>
+                <div className="metric-lbl">Prop Fraction{fracSev && <span className={`metric-led ${fracSev.toLowerCase()}`}/>}</div>
                 <div className="metric-val">{(recalc.frac*100).toFixed(1)}<span className="unit"> %</span></div>
                 <div className="metric-delta">of total wet mass</div>
               </div>
-              <div className="metric">
-                <div className="metric-lbl">Thrust</div>
+              <div className={`metric ${sevClass(twrSev)}`}>
+                <div className="metric-lbl">Thrust{twrSev && <span className={`metric-led ${twrSev.toLowerCase()}`}/>}</div>
                 <div className="metric-val">{cfg.engine.thrust}<span className="unit"> N</span></div>
-                <div className="metric-delta">T/W {(cfg.engine.thrust/(recalc.wet*9.81)).toFixed(3)}</div>
+                <div className="metric-delta">T/W {twr.toFixed(3)}</div>
               </div>
               <div className="metric">
                 <div className="metric-lbl">Isp</div>
                 <div className="metric-val">{cfg.engine.isp}<span className="unit"> s</span></div>
                 <div className="metric-delta">ve {(cfg.engine.isp*9.80665).toFixed(0)} m/s</div>
               </div>
-              <div className="metric">
-                <div className="metric-lbl">Complexity</div>
+              <div className={`metric ${sevClass(cxSev)}`}>
+                <div className="metric-lbl">Complexity{cxSev && <span className={`metric-led ${cxSev.toLowerCase()}`}/>}</div>
                 <div className="metric-val">{cfg.engine.cx}<span className="unit"> / 5</span></div>
-                <div className="metric-delta">{cfg.engine.cx <= 2 ? 'low' : cfg.engine.cx <= 3 ? 'moderate' : 'high'}</div>
+                <div className="metric-delta">{cfg.engine.cx <= 2 ? 'low' : cfg.engine.cx <= 3 ? 'moderate' : cfg.engine.cx === 4 ? 'high' : 'maximum'}</div>
               </div>
             </div>
           </div>
 
           <div className="panel bracket advisory-panel">
             <span className="br-bl"/><span className="br-br"/>
-            <div className="panel-head"><span className="ph-id">ADVISORIES</span><span className="ph-right">{cfg.warnings.length} ACTIVE</span></div>
+            <div className="panel-head">
+              <span className="ph-id">MASTER ANNUNCIATORS</span>
+              <span className="ph-right">
+                <span className={`adv-count-pill sev-warning ${advisories.counts.WARNING ? 'on':''}`}>W {advisories.counts.WARNING}</span>
+                <span className={`adv-count-pill sev-caution ${advisories.counts.CAUTION ? 'on':''}`}>C {advisories.counts.CAUTION}</span>
+                <span className={`adv-count-pill sev-advisory ${advisories.counts.ADVISORY ? 'on':''}`}>A {advisories.counts.ADVISORY}</span>
+              </span>
+            </div>
             <div className="advisory-body">
-              <Annunciators frac={recalc.frac}/>
-              {cfg.warnings.length > 0 ? (
-                <div className="warn-strip" style={{marginTop:0}}>
-                  {cfg.warnings.map((w, i) => (
-                    <div key={i} className={`warn-item ${w.sev}`}>
-                      <span className="sev">{w.sev}</span>{w.msg}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="warn-empty">NO TEXT ADVISORIES</div>
-              )}
+              <Annunciators frac={recalc.frac} ackd={ackedMaster} onReset={onResetMaster} onTest={onTestMaster} testing={masterTesting}/>
             </div>
           </div>
         </div>
@@ -389,11 +547,27 @@ function HeroTopConfig({ cfg, dv, selectedId, setSelectedId, feasible, dryMass }
 // ─────────────────────────────────────────────────────────────
 // Sensitivity slider strip
 // ─────────────────────────────────────────────────────────────
-function SensitivityStrip({ cfg, dv, setDV, dryMass }) {
+function SensitivityStrip({ cfg, dv, setDV, dryMass, feasible, alarmState, advisories }) {
   const r = recalcForDV(cfg, dv, dryMass);
-  const base = cfg.budget.wet;
-  const delta = r.wet - base;
-  const pct = (delta / base) * 100;
+  // Mass-optimal reference: lightest feasible config re-solved at the current Δv.
+  // Delta is (this config - min feasible wet). Positive = heavier than optimum.
+  const optimal = useMemo(() => {
+    if (!feasible || feasible.length === 0) return null;
+    let best = null, bestWet = Infinity;
+    for (const c of feasible) {
+      const rc = recalcForDV(c, dv, dryMass);
+      if (rc.wet < bestWet) { best = c; bestWet = rc.wet; }
+    }
+    return { cfg: best, wet: bestWet };
+  }, [feasible, dv, dryMass]);
+  const delta = optimal ? r.wet - optimal.wet : 0;
+  const pct = optimal ? (delta / optimal.wet) * 100 : 0;
+  const isOptimal = optimal && cfg.id === optimal.cfg.id;
+  // Local alarm on the Mass Delta card — purely local:
+  //   CAUTION   at ≥ 5 kg over optimum
+  //   WARNING   at ≥ 15 kg over optimum
+  // Independent of master. (Master = whole-config tyranny of Δv.)
+  const localAlarm = isOptimal ? null : delta >= 15 ? 'warning' : delta >= 5 ? 'caution' : null;
 
   return (
     <div className="slider-card">
@@ -412,14 +586,24 @@ function SensitivityStrip({ cfg, dv, setDV, dryMass }) {
           DRAG TO EXPLORE MISSION ΔV — MASS SCALES VIA TSIOLKOVSKY
         </div>
       </div>
-      <div>
-        <div className="sc-title">Mass Delta</div>
-        <div className="sc-val" style={{color: delta > 0 ? 'var(--lock)' : delta < 0 ? 'var(--radar)' : 'var(--text)'}}>
-          {delta > 0 ? '+' : ''}{delta.toFixed(1)}<span className="unit" style={{fontSize:12}}> kg</span>
+      <div className={`sc-mass-delta ${localAlarm ? `alarm-${localAlarm}` : ''}`}>
+        <div className="sc-title">
+          vs Mass-Optimal
+          {localAlarm && <span className={`metric-led ${localAlarm}`}/>}
+        </div>
+        <div className="sc-val" style={{color: isOptimal ? 'var(--radar)' : delta > 0 ? 'var(--lock)' : 'var(--text)'}}>
+          {isOptimal ? '★ OPTIMAL' : `${delta > 0 ? '+' : ''}${delta.toFixed(1)}`}
+          {!isOptimal && <span className="unit" style={{fontSize:12}}> kg</span>}
         </div>
         <div className="sc-delta">
-          {delta > 0 ? <span className="up">▲ +{pct.toFixed(1)}%</span> : delta < 0 ? <span className="down">▼ {pct.toFixed(1)}%</span> : 'no change'}
-          &nbsp;·&nbsp;wet {r.wet.toFixed(1)} kg
+          {isOptimal ? (
+            <span style={{color:'var(--radar)'}}>this config is mass-optimal</span>
+          ) : optimal ? (
+            <>
+              <span className="up">▲ +{pct.toFixed(1)}%</span>
+              &nbsp;·&nbsp;ref {optimal.cfg.id} {optimal.wet.toFixed(1)} kg
+            </>
+          ) : 'no reference'}
         </div>
       </div>
     </div>
@@ -668,6 +852,7 @@ function App() {
     modes: new Set(['Mono','Biprop','Green']),
     fuels: new Set(['N2H4','MMH','LMP-103S']),
     minT: 0, maxT: 10000, heritage: 1, noItar: false, maxCx: 5,
+    minTWR: 0.040,
   });
   const [params, setLiveParams] = useState(draftParams);
   const [filters, setLiveFilters] = useState(draftFilters);
@@ -681,6 +866,7 @@ function App() {
     if (f.heritage !== g.heritage) return true;
     if (f.noItar !== g.noItar) return true;
     if (f.maxCx !== g.maxCx) return true;
+    if (f.minTWR !== g.minTWR) return true;
     const eqSet = (a,b) => a.size === b.size && [...a].every(x => b.has(x));
     if (!eqSet(f.modes, g.modes)) return true;
     if (!eqSet(f.fuels, g.fuels)) return true;
@@ -741,10 +927,19 @@ function App() {
 
   const selectedCfg = feasible.find(c => c.id === selectedId) || feasible[0] || CONFIGS[0];
 
-  // Master alarm state — drives UI-wide amber/red propagation
+  // Master alarm state — drives UI-wide amber/red propagation. Now reflects
+  // the full advisory tree (prop fraction + complexity + dormant TWR) rather
+  // than just prop fraction.
   const selectedRecalc = useMemo(() => {
     return { ...selectedCfg.budget, ...recalcForDV(selectedCfg, dv, params.dryMass) };
   }, [selectedCfg, dv, params.dryMass]);
+  const advisories = useMemo(
+    () => buildAdvisories(selectedCfg, selectedRecalc, params.minTWR ?? filters.minTWR),
+    [selectedCfg, selectedRecalc, filters.minTWR]
+  );
+  // Master alarms track only the propellant-fraction — whole-configuration
+  // severity. Local alarms (complexity, TWR, etc.) exist per-metric and do
+  // NOT escalate the master lamps or the body-level alarm state.
   const alarmState =
     selectedRecalc.frac >= 0.90 ? 'warning' :
     selectedRecalc.frac >= 0.80 ? 'caution' : 'nominal';
@@ -755,11 +950,64 @@ function App() {
     if (alarmState === 'warning') b.classList.add('alarm-warning');
   }, [alarmState]);
 
+  // ── Acknowledge / reset state for both panels ─────────────────
+  // Master lamps: a set of which severities are currently acked.
+  // When a lamp goes from OFF→ON, its ack clears automatically so a fresh
+  // event re-fires the flash. Press TEST to briefly light both lamps.
+  const [ackedMaster, setAckedMaster] = useState(() => new Set());
+  const prevAlarmRef = useRef(alarmState);
+  useEffect(() => {
+    const prev = prevAlarmRef.current;
+    if (prev !== alarmState) {
+      // Any rising edge clears its own ack so the lamp flashes anew.
+      if (alarmState !== 'nominal' && prev !== alarmState) {
+        const next = new Set(ackedMaster);
+        next.delete(alarmState);
+        setAckedMaster(next);
+      }
+    }
+    prevAlarmRef.current = alarmState;
+  }, [alarmState]);
+  const [masterTesting, setMasterTesting] = useState(false);
+  const testMaster = () => {
+    setMasterTesting(true);
+    setTimeout(() => setMasterTesting(false), 900);
+  };
+  const resetMaster = () => {
+    // Latch ack for whichever severity is currently active.
+    const next = new Set(ackedMaster);
+    if (selectedRecalc.frac >= 0.80) next.add('caution');
+    if (selectedRecalc.frac >= 0.90) next.add('warning');
+    setAckedMaster(next);
+  };
+
+  // CAS: a set of 'SRC:SEV' keys that have been acknowledged. Cleared when
+  // the item drops off or re-fires (exits then re-enters the advisory set).
+  const [ackedCAS, setAckedCAS] = useState(() => new Set());
+  const prevCASKeysRef = useRef(new Set());
+  useEffect(() => {
+    const cur = new Set(advisories.items.map(a => `${a.src}:${a.sev}`));
+    const prev = prevCASKeysRef.current;
+    // Remove acks for items no longer present (drop off = natural clear)
+    let changed = false;
+    const next = new Set(ackedCAS);
+    for (const k of ackedCAS) {
+      if (!cur.has(k)) { next.delete(k); changed = true; }
+    }
+    if (changed) setAckedCAS(next);
+    prevCASKeysRef.current = cur;
+  }, [advisories]);
+  const resetCAS = () => {
+    setAckedCAS(new Set(advisories.items.map(a => `${a.src}:${a.sev}`)));
+  };
+
   const togglePin = id => {
     const next = new Set(pinned);
     next.has(id) ? next.delete(id) : next.add(id);
     setPinned(next);
   };
+
+  const clock = useClock();
 
   return (
     <div className="app">
@@ -774,7 +1022,7 @@ function App() {
           <span>MISSION · {params.dryMass}kg · Δv {dv.toFixed(0)}m/s</span>
           <span>CONFIGS · {feasible.length}/{CONFIGS.length}</span>
           <span>PINNED · {pinned.size}</span>
-          <span>2026-04-18 · 14:32:07Z</span>
+          <span className="topbar-clock"><span className="clock-dot"/>{clock}</span>
         </div>
       </header>
 
@@ -793,9 +1041,20 @@ function App() {
             </div>
           ) : (
             <>
-              <HeroTopConfig cfg={selectedCfg} dv={dv} selectedId={selectedId} setSelectedId={setSelectedId} feasible={feasible} dryMass={params.dryMass}/>
+              <HeroTopConfig
+                cfg={selectedCfg} dv={dv}
+                selectedId={selectedId} setSelectedId={setSelectedId}
+                feasible={feasible} dryMass={params.dryMass}
+                advisories={advisories}
+                ackedMaster={ackedMaster}
+                onResetMaster={resetMaster}
+                onTestMaster={testMaster}
+                masterTesting={masterTesting}
+              />
 
-              <SensitivityStrip cfg={selectedCfg} dv={dv} setDV={setDV} dryMass={params.dryMass}/>
+              <CASList advisories={advisories} ackedCAS={ackedCAS} onResetCAS={resetCAS}/>
+
+              <SensitivityStrip cfg={selectedCfg} dv={dv} setDV={setDV} dryMass={params.dryMass} feasible={feasible} alarmState={alarmState} advisories={advisories} minTWR={filters.minTWR}/>
 
               <div className="tabs">
                 <div className={`tab ${tab==='ranked'?'active':''}`} onClick={()=>setTab('ranked')}>Ranked Trade <span className="tab-count">{feasible.length}</span></div>

@@ -106,13 +106,14 @@ window.buildScatter = function(configs, selectedId, pinned) {
       parts.push(`<line x1="${cx}" y1="${cy+inner-3}" x2="${cx}" y2="${cy+inner+3}" stroke="${red}" stroke-width="0.8"/>`);
       parts.push(`<line x1="${cx-inner-3}" y1="${cy}" x2="${cx-inner+3}" y2="${cy}" stroke="${red}" stroke-width="0.8"/>`);
       parts.push(`<line x1="${cx+inner-3}" y1="${cy}" x2="${cx+inner+3}" y2="${cy}" stroke="${red}" stroke-width="0.8"/>`);
-      // label plate — above box, right-aligned to outer edge
-      const labelW = 92;
+      // label plate — centered on cx so the middle dot lines up with top vertex
+      const labelW = 96;
       const labelY = cy - outer - 6;
+      const plateX = cx - labelW / 2;
       parts.push(`<g class="lock-label">`);
-      parts.push(`<rect x="${cx+outer - labelW}" y="${labelY - 10}" width="${labelW}" height="12" fill="#0a0d0f" stroke="${red}" stroke-width="0.6"/>`);
-      parts.push(`<circle cx="${cx+outer - labelW + 6}" cy="${labelY - 4}" r="2" fill="${red}"><animate attributeName="opacity" values="1;0.2;1" dur="0.9s" repeatCount="indefinite"/></circle>`);
-      parts.push(`<text x="${cx+outer - labelW + 12}" y="${labelY - 1}" ${font} font-size="8.5" fill="${red}" letter-spacing="0.18em">LOCK · ${best.id}</text>`);
+      parts.push(`<rect x="${plateX}" y="${labelY - 10}" width="${labelW}" height="12" fill="#0a0d0f" stroke="${red}" stroke-width="0.6"/>`);
+      parts.push(`<circle cx="${plateX + 6}" cy="${labelY - 4}" r="2" fill="${red}"><animate attributeName="opacity" values="1;0.2;1" dur="0.9s" repeatCount="indefinite"/></circle>`);
+      parts.push(`<text x="${cx}" y="${labelY - 1}" ${font} font-size="8.5" fill="${red}" letter-spacing="0.18em" text-anchor="middle">LOCK · ${best.id}</text>`);
       parts.push(`</g>`);
       parts.push(`</g>`);
     }
