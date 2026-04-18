@@ -1,0 +1,1714 @@
+/* ============================================================
+   Propulsion System Trade Tool — mission-control dark theme
+   ============================================================ */
+
+:root {
+  /* Base palette */
+  --bg: #0a0d0f;
+  --bg-panel: #11161a;
+  --bg-panel-2: #151b20;
+  --bg-elev: #1a2128;
+  --hairline: #222b33;
+  --hairline-strong: #2e3a44;
+  --text: #d7dee4;
+  --text-dim: #8a96a0;
+  --text-faint: #5a6670;
+  --text-inverse: #0a0d0f;
+
+  /* Signal colors */
+  --radar: #6ee06a;              /* radar green - primary / OK */
+  --radar-glow: rgba(110, 224, 106, 0.18);
+  --radar-dim: #3d8a3a;
+  --lock: #ff4a4a;               /* missile-lock red - alert / danger */
+  --lock-glow: rgba(255, 74, 74, 0.20);
+  --amber: #f5b041;              /* caution */
+  --amber-glow: rgba(245, 176, 65, 0.18);
+  --cyan: #4fd5ff;               /* info */
+  --cyan-glow: rgba(79, 213, 255, 0.16);
+  --magenta: #d86ecc;            /* secondary tag */
+
+  /* Mode colors (kept subtle, label-forward) */
+  --mono: #4fd5ff;
+  --biprop: #f5b041;
+  --green: #6ee06a;
+
+  /* Type */
+  --font-mono: 'Azeret Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-sans: 'Barlow Condensed', 'Azeret Mono', ui-monospace, monospace;
+
+  /* Radius / shadow (kept tight — not rounded-friendly aesthetic) */
+  --r-sm: 2px;
+  --r-md: 3px;
+  --r-lg: 4px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: 0.015em;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* Grid-paper background for main canvas */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(255,255,255,0.015) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,0.015) 1px, transparent 1px);
+  background-size: 32px 32px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.app { position: relative; z-index: 1; }
+
+/* ============================================================
+   Numeric / label helpers
+   ============================================================ */
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.lbl { text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; color: var(--text-dim); font-weight: 500; }
+.lbl-tight { text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; color: var(--text-dim); font-weight: 500; }
+.unit { color: var(--text-faint); font-weight: 400; margin-left: 2px; font-size: 0.85em; }
+
+/* ============================================================
+   Top bar
+   ============================================================ */
+.topbar {
+  height: 52px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--bg-panel);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 24px;
+  position: sticky; top: 0; z-index: 50;
+  backdrop-filter: blur(8px);
+}
+
+.topbar-brand {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text);
+  font-weight: 600;
+}
+.topbar-brand .brand-mark {
+  width: 22px; height: 22px;
+  border: 1px solid var(--radar);
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center;
+  box-shadow: inset 0 0 6px var(--radar-glow), 0 0 6px var(--radar-glow);
+}
+.topbar-brand .brand-mark::before {
+  content: ''; width: 6px; height: 6px; background: var(--radar); border-radius: 50%;
+  box-shadow: 0 0 8px var(--radar);
+}
+.topbar-brand .brand-sub {
+  color: var(--text-faint); font-weight: 400; letter-spacing: 0.08em;
+}
+
+.topbar-meta {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 18px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.topbar-meta .dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--radar);
+  box-shadow: 0 0 6px var(--radar);
+  animation: pulse 2.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* ============================================================
+   Layout: sidebar + main
+   ============================================================ */
+.layout {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  min-height: calc(100vh - 52px);
+}
+.sidebar {
+  border-right: 1px solid var(--hairline);
+  background: var(--bg-panel);
+  padding: 20px 18px 40px;
+  overflow-y: auto;
+  max-height: calc(100vh - 52px);
+  position: sticky;
+  top: 52px;
+}
+.main { padding: 24px 28px 80px; min-width: 0; }
+
+/* ============================================================
+   Sidebar sections
+   ============================================================ */
+.side-section { margin-bottom: 22px; }
+.side-section + .side-section { padding-top: 18px; border-top: 1px dashed var(--hairline); }
+.side-section h3 {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 0 0 12px;
+  font-weight: 600;
+  display: flex; align-items: center; gap: 6px;
+}
+.side-section h3::before {
+  content: '';
+  width: 8px; height: 1px; background: var(--radar);
+  box-shadow: 0 0 4px var(--radar);
+}
+
+/* Input fields */
+.field { margin-bottom: 12px; }
+.field-label {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.field-label .unit { color: var(--text-faint); }
+.num-input {
+  width: 100%;
+  background: var(--bg-elev);
+  border: 1px solid var(--hairline);
+  color: var(--radar);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.num-input:focus {
+  border-color: var(--radar);
+  box-shadow: 0 0 0 1px var(--radar), inset 0 0 6px var(--radar-glow);
+}
+
+/* Slider */
+.slider-row {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 4px;
+}
+input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  flex: 1;
+  height: 4px;
+  background: var(--bg-elev);
+  border-radius: 2px;
+  outline: none;
+  border: 1px solid var(--hairline);
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px;
+  background: var(--radar);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 8px var(--radar), inset 0 0 2px rgba(0,0,0,0.4);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 14px; height: 14px;
+  background: var(--radar);
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 8px var(--radar);
+}
+
+/* Checkbox row */
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  padding: 4px 9px;
+  background: var(--bg-elev);
+  border: 1px solid var(--hairline);
+  color: var(--text-dim);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.12s;
+  text-transform: uppercase;
+}
+.chip:hover { border-color: var(--hairline-strong); color: var(--text); }
+.chip.active {
+  background: rgba(110, 224, 106, 0.08);
+  border-color: var(--radar);
+  color: var(--radar);
+  box-shadow: inset 0 0 6px var(--radar-glow);
+}
+.chip.amber.active { background: rgba(245,176,65,0.08); border-color: var(--amber); color: var(--amber); box-shadow: inset 0 0 6px var(--amber-glow); }
+.chip.cyan.active { background: rgba(79,213,255,0.08); border-color: var(--cyan); color: var(--cyan); box-shadow: inset 0 0 6px var(--cyan-glow); }
+
+/* Toggle */
+.toggle-row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+  padding: 3px 0;
+}
+.toggle {
+  width: 32px; height: 16px;
+  background: var(--bg-elev);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  position: relative;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.toggle::after {
+  content: ''; position: absolute;
+  top: 2px; left: 2px;
+  width: 10px; height: 10px;
+  background: var(--text-dim);
+  border-radius: 50%;
+  transition: all 0.12s;
+}
+.toggle.on { border-color: var(--radar); background: rgba(110,224,106,0.12); }
+.toggle.on::after { left: 18px; background: var(--radar); box-shadow: 0 0 6px var(--radar); }
+
+/* ============================================================
+   Hero Top Config
+   ============================================================ */
+.section-title {
+  display: flex; align-items: baseline; gap: 14px;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--hairline);
+}
+.section-title h2 {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin: 0;
+  color: var(--text);
+}
+.section-title .section-meta {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  letter-spacing: 0.08em;
+}
+.section-title .section-right {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-dim);
+  letter-spacing: 0.06em;
+}
+
+/* Bracketed panel */
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  position: relative;
+}
+.panel.bracket::before, .panel.bracket::after,
+.panel.bracket > .br-tl, .panel.bracket > .br-tr,
+.panel.bracket > .br-bl, .panel.bracket > .br-br {
+  content: ''; position: absolute; width: 10px; height: 10px;
+  pointer-events: none;
+}
+.panel.bracket::before { top: -1px; left: -1px; border-top: 1px solid var(--radar); border-left: 1px solid var(--radar); }
+.panel.bracket::after  { top: -1px; right: -1px; border-top: 1px solid var(--radar); border-right: 1px solid var(--radar); }
+.panel.bracket > .br-bl{ bottom: -1px; left: -1px;  border-bottom: 1px solid var(--radar); border-left: 1px solid var(--radar); display:block;}
+.panel.bracket > .br-br{ bottom: -1px; right: -1px; border-bottom: 1px solid var(--radar); border-right: 1px solid var(--radar); display:block;}
+
+.panel-head {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--hairline);
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.panel-head .ph-id {
+  color: var(--radar);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+.panel-head .ph-right { margin-left: auto; }
+.panel-body { padding: 14px; }
+
+/* Hero grid */
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.hero-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--hairline);
+  border: 1px solid var(--hairline);
+}
+.metric {
+  background: var(--bg-panel);
+  padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.metric .metric-lbl {
+  font-family: var(--font-mono);
+  font-size: 9.5px; letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.metric .metric-val {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  color: var(--text);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.metric .metric-val.accent { color: var(--radar); }
+.metric .metric-val.warn   { color: var(--lock); }
+.metric .metric-delta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+.metric .metric-delta .up { color: var(--lock); }
+.metric .metric-delta .down { color: var(--radar); }
+
+/* Schematic panel — native aspect, column-scaled */
+.schematic-wrap { padding: 14px; }
+.schematic-wrap svg { display: block; width: 100%; height: auto; }
+
+/* When schematic lives in the hero-grid thumb panel, fill the column */
+.schematic-thumb-panel { display: flex; flex-direction: column; min-height: 0; }
+.schematic-thumb-panel .schematic-wrap {
+  flex: 1;
+  min-height: 0;
+  padding: 12px;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+.schematic-thumb-panel .schematic-wrap svg {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* Pin hero-grid row height so Advisories growth doesn't stretch the schematic */
+.hero-grid { grid-auto-rows: minmax(0, 560px); align-items: stretch; }
+.hero-grid > div:nth-child(2) { min-height: 0; overflow: hidden; }
+.advisory-panel { max-height: 320px; overflow: hidden; display: flex; flex-direction: column; }
+.advisory-panel .advisory-body { flex: 1; min-height: 0; max-height: none; overflow-y: auto; }
+
+/* top-of-section bar — button acts as the section header; config picker on the right */
+.top-candidate-bar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 14px;
+  align-items: stretch;
+  margin-bottom: 14px;
+}
+.top-candidate-picker {
+  background: var(--bg-elev);
+  color: var(--radar);
+  border: 1px solid var(--hairline);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  padding: 0 12px;
+  min-width: 280px;
+  cursor: pointer;
+}
+
+.schematic-open-btn {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 16px;
+  background: linear-gradient(180deg, #1c242a 0%, #141a1f 45%, #0e1318 100%);
+  border: 1px solid #2a343b;
+  border-top-color: #3a464e;
+  border-bottom-color: #080b0e;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.06),
+    inset 0 -1px 0 rgba(0,0,0,0.4),
+    0 2px 0 #080b0e,
+    0 3px 6px rgba(0,0,0,0.5);
+  color: var(--text);
+  text-decoration: none;
+  font-family: var(--font-mono);
+  position: relative;
+  transition: all 80ms ease;
+  user-select: none;
+  cursor: pointer;
+}
+.schematic-open-btn:hover {
+  background: linear-gradient(180deg, #202830 0%, #171d23 45%, #101519 100%);
+  border-top-color: #44525b;
+}
+.schematic-open-btn:active {
+  transform: translateY(2px);
+  background: linear-gradient(180deg, #0e1318 0%, #141a1f 55%, #1c242a 100%);
+  box-shadow:
+    inset 0 2px 3px rgba(0,0,0,0.6),
+    0 0 0 #080b0e;
+  border-top-color: #080b0e;
+  border-bottom-color: #3a464e;
+}
+.schematic-open-btn .sob-led {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #a8ff82 0%, #5fd24f 35%, #2a7a1e 80%, #0a2005 100%);
+  box-shadow:
+    0 0 8px rgba(110, 224, 106, 0.7),
+    inset 0 -1px 2px rgba(0,0,0,0.3),
+    inset 0 1px 1px rgba(255,255,255,0.3);
+  flex-shrink: 0;
+  animation: sobLedPulse 2.4s ease-in-out infinite;
+}
+@keyframes sobLedPulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(110, 224, 106, 0.7), inset 0 -1px 2px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.3); }
+  50% { box-shadow: 0 0 14px rgba(110, 224, 106, 1), inset 0 -1px 2px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.4); }
+}
+.schematic-open-btn .sob-face {
+  flex: 1;
+  display: flex; flex-direction: column; gap: 2px;
+  border-left: 1px solid rgba(255,255,255,0.04);
+  border-right: 1px solid rgba(0,0,0,0.3);
+  padding: 0 12px;
+}
+.schematic-open-btn .sob-main {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  color: #d7dee4;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.5);
+}
+.schematic-open-btn .sob-sub {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: #6b757d;
+  text-transform: none;
+}
+.schematic-open-btn .sob-arrow {
+  font-size: 11px;
+  color: #6ee06a;
+  text-shadow: 0 0 6px rgba(110, 224, 106, 0.6);
+  flex-shrink: 0;
+  padding-right: 4px;
+}
+
+/* ============================================================
+   Tabs (bottom - results)
+   ============================================================ */
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: 14px;
+  gap: 2px;
+}
+.tab {
+  padding: 10px 18px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  user-select: none;
+  transition: color 0.12s, border-color 0.12s;
+  display: flex; align-items: center; gap: 8px;
+}
+.tab:hover { color: var(--text); }
+.tab.active {
+  color: var(--radar);
+  border-bottom-color: var(--radar);
+  box-shadow: 0 1px 0 var(--radar);
+}
+.tab .tab-count {
+  font-size: 9.5px;
+  padding: 1px 5px;
+  background: var(--bg-elev);
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  color: var(--text-dim);
+}
+.tab.active .tab-count { color: var(--radar); border-color: var(--radar); }
+
+/* ============================================================
+   Ranked Table
+   ============================================================ */
+.table-wrap {
+  border: 1px solid var(--hairline);
+  background: var(--bg-panel);
+  overflow-x: auto;
+}
+table.trade {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+table.trade thead th {
+  padding: 9px 10px;
+  text-align: left;
+  background: var(--bg-panel-2);
+  border-bottom: 1px solid var(--hairline-strong);
+  font-weight: 500;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  white-space: nowrap;
+  position: sticky; top: 0;
+}
+table.trade thead th.num-col { text-align: right; }
+table.trade tbody tr {
+  border-bottom: 1px solid var(--hairline);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+table.trade tbody tr:hover { background: rgba(255,255,255,0.02); }
+table.trade tbody tr.selected {
+  background: rgba(110,224,106,0.05);
+  box-shadow: inset 2px 0 0 var(--radar);
+}
+table.trade tbody tr.pinned::before { content: ''; }
+table.trade tbody tr.pareto td.id-col { color: var(--radar); }
+
+table.trade td {
+  padding: 8px 10px;
+  color: var(--text);
+  white-space: nowrap;
+}
+table.trade td.num-col { text-align: right; font-variant-numeric: tabular-nums; }
+table.trade td.id-col {
+  color: var(--text-dim);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+table.trade td.pin-col { width: 34px; text-align: center; }
+table.trade td.pareto-col { width: 24px; text-align: center; color: var(--radar); }
+
+.pin-btn {
+  width: 18px; height: 18px;
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--text-faint);
+  border-radius: 2px;
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px;
+  transition: all 0.12s;
+  padding: 0;
+}
+.pin-btn:hover { border-color: var(--radar); color: var(--radar); }
+.pin-btn.on { border-color: var(--radar); background: rgba(110,224,106,0.12); color: var(--radar); box-shadow: 0 0 6px var(--radar-glow); }
+
+/* Mode chip in table */
+.mode-chip {
+  display: inline-block;
+  padding: 2px 7px;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid;
+  border-radius: var(--r-sm);
+  font-weight: 500;
+}
+.mode-chip.Mono   { color: var(--mono);   border-color: var(--mono); }
+.mode-chip.Biprop { color: var(--biprop); border-color: var(--biprop); }
+.mode-chip.Green  { color: var(--green);  border-color: var(--green); }
+
+.itar-flag {
+  display: inline-block;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--lock);
+  border: 1px solid var(--lock);
+  padding: 1px 4px;
+  border-radius: var(--r-sm);
+  margin-left: 6px;
+  font-weight: 500;
+}
+
+.status-pill {
+  display: inline-block;
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  border: 1px solid var(--hairline);
+  text-transform: uppercase;
+}
+.status-pill.cots { color: var(--radar); border-color: var(--radar); }
+.status-pill.delta { color: var(--amber); border-color: var(--amber); }
+.status-pill.dev { color: var(--lock); border-color: var(--lock); }
+
+/* Pareto star */
+.pareto-star {
+  color: var(--radar);
+  text-shadow: 0 0 6px var(--radar-glow);
+  font-size: 12px;
+}
+
+/* Warnings inline */
+.warn-cell { max-width: 340px; white-space: normal; font-size: 10.5px; line-height: 1.4; }
+.warn-sev {
+  display: inline-block;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  padding: 1px 4px;
+  margin-right: 6px;
+  border: 1px solid;
+  border-radius: 2px;
+}
+.warn-sev.WARNING { color: var(--lock); border-color: var(--lock); }
+.warn-sev.CAUTION { color: var(--amber); border-color: var(--amber); }
+.warn-sev.INFO    { color: var(--cyan); border-color: var(--cyan); }
+
+/* ============================================================
+   Scatter (Pareto) — svg
+   ============================================================ */
+.scatter-wrap {
+  padding: 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--hairline);
+}
+.scatter-svg { width: 100%; height: 440px; display: block; }
+.scatter-svg .grid { stroke: var(--hairline); stroke-width: 0.5; }
+.scatter-svg .axis { stroke: var(--hairline-strong); stroke-width: 1; }
+.scatter-svg .axis-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--text-dim);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.scatter-svg .tick-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  fill: var(--text-faint);
+}
+.scatter-svg .pareto-line {
+  stroke: var(--radar);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  fill: none;
+  opacity: 0.6;
+}
+.scatter-svg .point {
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.scatter-svg .point.selected circle {
+  stroke: var(--radar);
+  stroke-width: 2;
+}
+.scatter-svg .point-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  fill: var(--text-dim);
+  pointer-events: none;
+}
+
+/* ============================================================
+   Warnings panel / expanded detail
+   ============================================================ */
+.warn-strip {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  margin-top: 12px;
+}
+.warn-item {
+  flex: 1 1 280px;
+  padding: 8px 10px;
+  border-left: 2px solid;
+  background: var(--bg-panel-2);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+.warn-item.WARNING { border-color: var(--lock); }
+.warn-item.CAUTION { border-color: var(--amber); }
+.warn-item.INFO    { border-color: var(--cyan); }
+.warn-item .sev {
+  display: inline-block;
+  font-size: 9px;
+  margin-right: 6px;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+}
+.warn-item.WARNING .sev { color: var(--lock); }
+.warn-item.CAUTION .sev { color: var(--amber); }
+.warn-item.INFO    .sev { color: var(--cyan); }
+
+/* Component breakdown cards */
+.comp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.comp-card {
+  border: 1px solid var(--hairline);
+  background: var(--bg-panel-2);
+  padding: 12px;
+}
+.comp-card h4 {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-dim);
+  margin: 0 0 10px;
+  display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px dashed var(--hairline);
+  padding-bottom: 6px;
+}
+.comp-card h4 .dot-sq {
+  width: 8px; height: 8px; display: inline-block;
+}
+.comp-card .comp-model {
+  font-family: var(--font-mono);
+  font-size: 12px; color: var(--text);
+  margin-bottom: 8px;
+}
+.comp-card .comp-row {
+  display: flex; justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 2px 0;
+  color: var(--text-dim);
+}
+.comp-card .comp-row .v { color: var(--text); }
+
+/* Pinned compare bars */
+.pin-compare { display: flex; flex-direction: column; gap: 10px; }
+.pin-bar {
+  display: grid;
+  grid-template-columns: 220px 1fr 100px;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--bg-panel);
+  border: 1px solid var(--hairline);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.pin-bar .pb-lbl { color: var(--text); }
+.pin-bar .pb-lbl .sub { color: var(--text-faint); font-size: 10px; }
+.pin-bar .pb-wet { text-align: right; color: var(--radar); font-size: 13px; }
+.stack-bar {
+  display: flex;
+  height: 20px;
+  border: 1px solid var(--hairline);
+  background: var(--bg-elev);
+  overflow: hidden;
+}
+.stack-seg {
+  height: 100%;
+  position: relative;
+}
+.stack-seg[data-k="dry"]  { background: #3a434c; }
+.stack-seg[data-k="eng"]  { background: #4fd5ff; }
+.stack-seg[data-k="fTk"]  { background: #6ee06a; }
+.stack-seg[data-k="oTk"]  { background: #f5b041; }
+.stack-seg[data-k="prs"]  { background: #d86ecc; }
+.stack-seg[data-k="prop"] { background: #8a96a0; opacity: 0.55; }
+
+/* Legend */
+.legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-dim); }
+.legend .lg { display: flex; align-items: center; gap: 6px; }
+.legend .sw { width: 10px; height: 10px; display: inline-block; }
+
+/* Slider card */
+.slider-card {
+  border: 1px solid var(--hairline);
+  background: var(--bg-panel);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1.1fr 1fr;
+  gap: 24px;
+  align-items: center;
+}
+.slider-card .sc-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.slider-card .sc-val {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  color: var(--radar);
+}
+.slider-card .sc-delta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+.slider-card .sc-delta .up { color: var(--lock); }
+.slider-card .sc-delta .down { color: var(--radar); }
+
+/* Tweaks panel */
+.tweaks-panel {
+  position: fixed;
+  bottom: 20px; right: 20px;
+  width: 280px;
+  background: var(--bg-panel);
+  border: 1px solid var(--radar);
+  box-shadow: 0 0 20px var(--radar-glow), 0 4px 20px rgba(0,0,0,0.4);
+  z-index: 200;
+  font-family: var(--font-mono);
+  display: none;
+}
+.tweaks-panel.show { display: block; }
+.tweaks-panel-head {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--radar);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.tweaks-panel-body { padding: 12px; }
+.tweak-row { margin-bottom: 10px; }
+.tweak-row label { display: block; font-size: 10px; color: var(--text-dim); margin-bottom: 4px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+/* Helper: scanline overlay option for hero only */
+.scanlines {
+  position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(255,255,255,0.008) 0px, rgba(255,255,255,0.008) 1px, transparent 1px, transparent 3px);
+  opacity: 0.4;
+}
+
+
+/* ============================================================
+   ADVISORY PANEL + ANNUNCIATOR LAMPS (skeuomorphic)
+   MASTER CAUTION (amber) and MASTER WARNING (red) modeled on
+   real cockpit annunciator modules — brushed housing, recessed
+   lens, phillips screws, press-to-test gloss, filament glow.
+   ============================================================ */
+.advisory-panel { background: #0d1214; }
+.advisory-body { padding: 14px; display: grid; grid-template-columns: 1fr; gap: 14px; max-height: 520px; overflow: hidden; }
+.advisory-body .warn-strip { max-height: 280px; overflow-y: auto; padding-right: 4px; }
+.advisory-body .warn-strip::-webkit-scrollbar { width: 6px; }
+.advisory-body .warn-strip::-webkit-scrollbar-track { background: transparent; }
+.advisory-body .warn-strip::-webkit-scrollbar-thumb { background: var(--hairline-strong); }
+
+.warn-empty {
+  font-family: var(--font-mono);
+  font-size: 10px; letter-spacing: 0.16em;
+  color: var(--text-faint);
+  padding: 10px 2px; border-top: 1px dashed var(--hairline);
+  text-align: center;
+}
+
+/* The bay housing both lamps, rendered as a slab of dark anodized aluminum */
+.annunciator-bay {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  padding: 18px 20px 20px;
+  background:
+    linear-gradient(180deg, #1a1e22 0%, #141719 100%);
+  border: 1px solid #000;
+  border-radius: 3px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.06),
+    inset 0 -1px 0 rgba(0,0,0,0.6),
+    inset 0 0 0 1px rgba(255,255,255,0.02),
+    0 2px 6px rgba(0,0,0,0.5);
+}
+/* reeded vent rails across the top of the bay */
+.ann-rails {
+  position: absolute; top: 5px; left: 12px; right: 12px;
+  display: flex; gap: 2px; height: 3px;
+}
+.ann-rails span {
+  flex: 1;
+  background: linear-gradient(180deg, #0a0c0d 0%, #1e2226 60%, #0a0c0d 100%);
+  border-radius: 1px;
+  box-shadow: inset 0 0 1px rgba(0,0,0,0.8);
+}
+
+/* Each lamp is: outer machined bezel → recessed lens → face text */
+.lamp {
+  display: flex; flex-direction: column; align-items: stretch;
+  gap: 6px;
+}
+.lamp-bezel {
+  position: relative;
+  padding: 6px;
+  border-radius: 4px;
+  background:
+    radial-gradient(ellipse at 50% 0%, #3a3f45 0%, #23272b 35%, #0e1012 100%);
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,0.14),
+    inset 0 -1px 1px rgba(0,0,0,0.7),
+    0 1px 0 rgba(0,0,0,0.6);
+}
+.lamp-lens {
+  position: relative;
+  aspect-ratio: 2.8 / 1;
+  border-radius: 2px;
+  overflow: hidden;
+  background: #050607;
+  box-shadow:
+    inset 0 2px 4px rgba(0,0,0,0.9),
+    inset 0 -1px 1px rgba(0,0,0,0.6),
+    inset 0 0 0 1px rgba(0,0,0,0.9);
+}
+
+/* The colored face behind everything — looks engraved when off, saturated when on */
+.lamp-face {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; justify-content: center; align-items: center;
+  font-family: var(--font-sans);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-align: center;
+  user-select: none;
+  z-index: 2;
+  padding: 0 8px;
+}
+.lamp-l1, .lamp-l2 { line-height: 1; }
+.lamp-l1 { font-size: 11px; letter-spacing: 0.18em; opacity: 0.85; }
+.lamp-l2 { font-size: 19px; margin-top: 3px; letter-spacing: 0.14em; }
+
+/* OFF state — completely dark, no visible text */
+.lamp.off .lamp-face {
+  color: transparent;
+  text-shadow: none;
+}
+.lamp.off .lamp-lens { background: #050607; }
+
+/* The internal glow/filament layer */
+.lamp-glow {
+  position: absolute; inset: 0; z-index: 1;
+  opacity: 0;
+  transition: opacity 0.08s steps(2, end);
+  pointer-events: none;
+}
+
+/* Gloss highlight on top of the lens — plastic dome feel */
+.lamp-gloss {
+  position: absolute; left: 0; right: 0; top: 0; height: 42%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0) 100%);
+  z-index: 3;
+  pointer-events: none;
+}
+
+/* Phillips screws at each corner of the bezel */
+.lamp-screws { position: absolute; inset: 0; pointer-events: none; }
+.scr {
+  position: absolute; width: 7px; height: 7px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #8a8e92 0%, #4a4e52 45%, #1a1c1e 100%);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.08);
+  z-index: 4;
+}
+.scr::before, .scr::after {
+  content: ''; position: absolute; inset: 0; margin: auto;
+  background: #0a0b0c;
+}
+.scr::before { width: 4px; height: 1px; top: 0; bottom: 0; transform: rotate(32deg); }
+.scr::after  { width: 1px; height: 4px; left: 0; right: 0; transform: rotate(32deg); }
+.scr-tl { top: 3px; left: 3px; }
+.scr-tr { top: 3px; right: 3px; }
+.scr-bl { bottom: 3px; left: 3px; }
+.scr-br { bottom: 3px; right: 3px; }
+
+/* ─ CAUTION (amber) ─────────────────────────────────── */
+.lamp-caution.on .lamp-lens {
+  background: linear-gradient(180deg, #3a2808 0%, #2a1d05 100%);
+}
+.lamp-caution.on .lamp-glow {
+  opacity: 1;
+  background:
+    radial-gradient(ellipse at 50% 55%, #ffe28a 0%, #ffb13a 18%, #e07a0b 45%, #5a2a02 75%, transparent 100%);
+  mix-blend-mode: screen;
+  animation: flicker 2.6s infinite;
+}
+.lamp-caution.on .lamp-face {
+  color: #201000;
+  text-shadow:
+    0 0 2px rgba(255,200,100,0.4),
+    0 1px 0 rgba(255,220,160,0.35);
+  filter: drop-shadow(0 0 0.5px rgba(0,0,0,0.4));
+}
+.lamp-caution.on .lamp-bezel {
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,0.14),
+    inset 0 -1px 1px rgba(0,0,0,0.7),
+    0 0 14px rgba(245, 176, 65, 0.45),
+    0 1px 0 rgba(0,0,0,0.6);
+}
+
+/* ─ WARNING (red) ───────────────────────────────────── */
+.lamp-warning.on .lamp-lens {
+  background: linear-gradient(180deg, #3a0606 0%, #220303 100%);
+}
+.lamp-warning.on .lamp-glow {
+  opacity: 1;
+  background:
+    radial-gradient(ellipse at 50% 55%, #ffb4b4 0%, #ff4040 18%, #b00000 45%, #400000 75%, transparent 100%);
+  mix-blend-mode: screen;
+  animation: flicker-hot 1.1s infinite;
+}
+.lamp-warning.on .lamp-face {
+  color: #1a0000;
+  text-shadow:
+    0 0 2px rgba(255,180,180,0.5),
+    0 1px 0 rgba(255,200,200,0.35);
+}
+.lamp-warning.on .lamp-bezel {
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,0.14),
+    inset 0 -1px 1px rgba(0,0,0,0.7),
+    0 0 16px rgba(255, 74, 74, 0.55),
+    0 1px 0 rgba(0,0,0,0.6);
+}
+
+/* subtle filament flicker */
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  47% { opacity: 0.96; }
+  48% { opacity: 0.82; }
+  49% { opacity: 1; }
+}
+@keyframes flicker-hot {
+  0%, 100% { opacity: 1; }
+  40% { opacity: 1; }
+  41% { opacity: 0.55; }
+  42% { opacity: 1; }
+  75% { opacity: 0.9; }
+}
+
+.lamp-sub {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  text-align: center;
+  padding: 2px 4px;
+  border-top: 1px solid var(--hairline);
+}
+.lamp.on.lamp-caution .lamp-sub { color: var(--amber); }
+.lamp.on.lamp-warning .lamp-sub { color: var(--lock); }
+
+
+/* ============================================================
+   MIL-SPEC OVERRIDES — less silicon-valley, more instrument panel
+   Harder edges, fewer glows, stenciled headers, mechanical chrome.
+   ============================================================ */
+
+:root {
+  /* Slightly cooler, less saturated — phosphor on anodized aluminum */
+  --bg: #0b0e10;
+  --bg-panel: #11151a;
+  --bg-panel-2: #141a20;
+  --bg-elev: #1a2027;
+  --hairline: #252d35;
+  --hairline-strong: #323c47;
+
+  /* Desaturate the "gamer green" toward an amber/yellow-green typical of
+     mil nav displays (think Litton, Collins). Also a muted caution amber. */
+  --radar:       #c9d34a;  /* was #6ee06a — now closer to CRT phosphor P1 */
+  --radar-dim:   #8c941f;
+  --radar-glow:  rgba(201, 211, 74, 0.12);
+
+  --amber:       #e0a030;
+  --amber-glow:  rgba(224, 160, 48, 0.14);
+  --lock:        #e24b3a;  /* slightly less neon */
+  --lock-glow:   rgba(226, 75, 58, 0.16);
+  --cyan:        #5ac2d6;
+  --cyan-glow:   rgba(90, 194, 214, 0.14);
+
+  /* Type */
+  --font-mono:   'Azeret Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-sans:   'Barlow Condensed', 'Azeret Mono', ui-monospace, monospace;
+  --font-stencil:'Barlow Condensed', 'Azeret Mono', monospace;
+
+  --r-sm: 0;
+  --r-md: 0;
+  --r-lg: 0;
+}
+
+/* Kill all border radii globally — mil-spec doesn't do rounded corners */
+.panel, .num-input, .tab, input[type="range"], .chip, .mode-chip, .tab-count,
+.topbar-brand .brand-mark, .toggle, .warn-item, .slider-card {
+  border-radius: 0 !important;
+}
+
+/* ─ Grid-paper background: tighter, more like engineering vellum ───── */
+body::before {
+  background-image:
+    linear-gradient(to right,  rgba(255,255,255,0.020) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,0.020) 1px, transparent 1px),
+    linear-gradient(to right,  rgba(255,255,255,0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,0.035) 1px, transparent 1px);
+  background-size: 16px 16px, 16px 16px, 96px 96px, 96px 96px;
+  opacity: 0.7;
+}
+
+/* ─ Baseline text: stiffen it up ───────────────────────────────────── */
+html, body {
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.lbl, .lbl-tight, .metric .metric-lbl, .panel-head, .side-section h3,
+.section-title h2, .tab, table.trade thead th {
+  font-family: var(--font-mono) !important;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   TOPBAR — rework as a dataplate (engraved metal ID plate)
+   ═══════════════════════════════════════════════════════════════════ */
+.topbar {
+  height: 56px;
+  background:
+    linear-gradient(180deg, #1a1f24 0%, #12161a 100%);
+  border-bottom: 1px solid #000;
+  box-shadow: inset 0 -1px 0 rgba(255,255,255,0.04), 0 1px 0 rgba(0,0,0,0.6);
+  backdrop-filter: none;
+  padding: 0 0 0 18px;
+  position: relative;
+}
+/* rivets along the bottom edge */
+.topbar::after {
+  content: '';
+  position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
+  background-image: radial-gradient(circle, rgba(255,255,255,0.12) 0 1px, transparent 2px);
+  background-size: 24px 1px;
+  background-repeat: repeat-x;
+  opacity: 0.4;
+}
+
+/* Brand mark: replace round-glow reticle with a stenciled part-number block */
+.topbar-brand { gap: 14px; font-size: 12px; letter-spacing: 0.18em; }
+.topbar-brand .brand-mark {
+  width: 30px; height: 30px;
+  border: 1px solid var(--hairline-strong);
+  background:
+    repeating-linear-gradient(45deg, transparent 0 3px, rgba(255,255,255,0.04) 3px 4px),
+    #0f1317;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.05),
+    inset 0 -1px 0 rgba(0,0,0,0.6);
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.topbar-brand .brand-mark::before {
+  content: 'Δ';
+  width: auto; height: auto; background: none; border-radius: 0;
+  font-family: var(--font-mono); font-weight: 700;
+  font-size: 16px; color: var(--radar);
+  box-shadow: none;
+  text-shadow: 0 0 4px rgba(201,211,74,0.4);
+  line-height: 1;
+}
+.topbar-brand .brand-sub { color: var(--text-faint); letter-spacing: 0.12em; }
+
+/* Status strip on the right — flat mono, no pulse dot */
+.topbar-meta { gap: 22px; padding-right: 18px; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; }
+.topbar-meta .dot {
+  width: 7px; height: 7px; border-radius: 0; background: var(--radar);
+  box-shadow: none;
+  animation: none;
+  outline: 1px solid rgba(201,211,74,0.35);
+  outline-offset: 2px;
+}
+.topbar-meta > span { position: relative; padding-left: 10px; border-left: 1px solid var(--hairline); }
+.topbar-meta > span:first-child { border-left: none; padding-left: 0; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   SIDEBAR — technical data form, not a web form
+   ═══════════════════════════════════════════════════════════════════ */
+.sidebar { background: #0e1216; padding-top: 16px; }
+
+.side-section h3 {
+  font-size: 10.5px;
+  letter-spacing: 0.22em;
+  color: var(--text-dim);
+  padding: 3px 0 4px;
+  border-bottom: 1px solid var(--hairline-strong);
+  margin-bottom: 10px;
+}
+.side-section h3::before {
+  width: 14px; height: 14px;
+  border: 1px solid var(--hairline-strong);
+  background:
+    linear-gradient(45deg, transparent 46%, var(--radar-dim) 46% 54%, transparent 54%);
+  box-shadow: none;
+}
+
+/* Field labels: more like a technical spec sheet */
+.field-label {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 10px;
+  color: var(--text-dim);
+  border-bottom: 1px dotted var(--hairline);
+  padding-bottom: 3px;
+  margin-bottom: 5px;
+}
+
+/* Numeric input: punchcard-style, no focus glow */
+.num-input {
+  background: #050708;
+  border: 1px solid var(--hairline-strong);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.8);
+  color: var(--radar);
+  font-weight: 600;
+  font-size: 15px;
+  padding: 8px 10px;
+}
+.num-input:focus {
+  border-color: var(--radar-dim);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.8), 0 0 0 1px var(--radar-dim);
+  outline: none;
+}
+
+/* Slider: mechanical knob on a track with tick marks */
+input[type="range"] {
+  height: 10px;
+  background:
+    linear-gradient(180deg, #050708 0%, #0c1014 100%);
+  border: 1px solid #000;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.8);
+  position: relative;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none !important; appearance: none !important;
+  width: 16px !important; height: 22px !important;
+  border-radius: 0 !important;
+  background:
+    linear-gradient(180deg, #4a5058 0%, #2a2f34 50%, #1a1e22 100%) !important;
+  border: 1px solid #000 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.14),
+    inset 0 -1px 0 rgba(0,0,0,0.8),
+    0 1px 2px rgba(0,0,0,0.6) !important;
+  position: relative;
+  cursor: ew-resize;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 16px !important; height: 22px !important;
+  border-radius: 0 !important;
+  background:
+    linear-gradient(180deg, #4a5058 0%, #2a2f34 50%, #1a1e22 100%) !important;
+  border: 1px solid #000 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.14),
+    inset 0 -1px 0 rgba(0,0,0,0.8) !important;
+  cursor: ew-resize;
+}
+
+/* Chips: label-maker tape */
+.chip {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  padding: 5px 9px;
+  background: #0c1014;
+  border: 1px solid var(--hairline-strong);
+  color: var(--text-dim);
+  border-radius: 0;
+  text-transform: uppercase;
+}
+.chip.on, .chip.active {
+  background: #1a2418;
+  border-color: var(--radar-dim);
+  color: var(--radar);
+  box-shadow: inset 0 0 0 1px rgba(201,211,74,0.15);
+}
+
+/* Toggle: sliding switch, more mechanical */
+.toggle {
+  width: 30px; height: 16px;
+  background: #050708;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 0;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.8);
+}
+.toggle::after {
+  width: 10px; height: 10px; top: 2px; left: 2px; border-radius: 0;
+  background:
+    linear-gradient(180deg, #5a6068 0%, #2a2f34 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 1px 2px rgba(0,0,0,0.6);
+}
+.toggle.on { background: #1a2418; border-color: var(--radar-dim); }
+.toggle.on::after {
+  left: 17px;
+  background:
+    linear-gradient(180deg, #d8e268 0%, #8c941f 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   PANELS — technical drawing blocks, not dashboard cards
+   ═══════════════════════════════════════════════════════════════════ */
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Remove corner brackets entirely — not a video game HUD */
+.panel.bracket::before,
+.panel.bracket::after,
+.panel.bracket > .br-bl,
+.panel.bracket > .br-br { display: none !important; }
+
+/* Panel heading: like a drawing title block */
+.panel-head {
+  background:
+    linear-gradient(180deg, #1a2027 0%, #141a20 100%);
+  border-bottom: 1px solid #000;
+  box-shadow: inset 0 -1px 0 var(--hairline-strong);
+  padding: 8px 14px;
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+}
+.panel-head .ph-id {
+  color: var(--radar);
+  font-weight: 700;
+  padding: 1px 7px;
+  border: 1px solid var(--radar-dim);
+  background: rgba(201,211,74,0.06);
+  letter-spacing: 0.14em;
+}
+
+/* Section titles: drafting stamp feel */
+.section-title {
+  border-bottom: 1px solid #000;
+  box-shadow: 0 1px 0 var(--hairline-strong);
+  padding: 8px 0 10px;
+  margin-bottom: 18px;
+}
+.section-title h2 {
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  padding-left: 10px;
+  border-left: 3px solid var(--radar);
+}
+.section-title .section-meta,
+.section-title .section-right {
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* Metrics block — gauge-card treatment with engraved labels */
+.hero-metrics {
+  background: #000;
+  border: 1px solid var(--hairline-strong);
+}
+.metric {
+  background:
+    linear-gradient(180deg, #12171c 0%, #0e1216 100%);
+  padding: 14px 14px;
+}
+.metric .metric-lbl {
+  font-size: 9.5px; letter-spacing: 0.2em;
+  color: var(--text-faint);
+  padding-bottom: 3px;
+  border-bottom: 1px dotted var(--hairline);
+  margin-bottom: 5px;
+}
+.metric .metric-val {
+  font-size: 22px; font-weight: 600;
+  letter-spacing: 0;
+  color: var(--text);
+}
+.metric .metric-val.accent { color: var(--radar); text-shadow: 0 0 6px rgba(201,211,74,0.25); }
+.metric .metric-val.warn   { color: var(--lock); text-shadow: 0 0 6px rgba(226,75,58,0.25); }
+.metric .metric-delta { font-size: 10px; color: var(--text-faint); letter-spacing: 0.04em; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   TABS — file-folder tabs, not web tabs
+   ═══════════════════════════════════════════════════════════════════ */
+.tabs {
+  border-bottom: 1px solid #000;
+  box-shadow: 0 1px 0 var(--hairline-strong);
+  gap: 0;
+}
+.tab {
+  padding: 10px 20px;
+  font-size: 10.5px;
+  letter-spacing: 0.2em;
+  border: 1px solid transparent;
+  border-bottom: none;
+  margin-bottom: -1px;
+  background: transparent;
+}
+.tab:hover { color: var(--text); background: rgba(255,255,255,0.02); }
+.tab.active {
+  color: var(--radar);
+  background: var(--bg-panel);
+  border-color: var(--hairline-strong);
+  border-bottom: 1px solid var(--bg-panel);
+  box-shadow: inset 0 2px 0 var(--radar);
+}
+.tab .tab-count {
+  font-size: 9.5px;
+  padding: 1px 6px;
+  background: #050708;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 0;
+  color: var(--text-dim);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   TABLE — closer to a printed spec sheet
+   ═══════════════════════════════════════════════════════════════════ */
+.table-wrap { border: 1px solid var(--hairline-strong); }
+table.trade thead th {
+  background:
+    linear-gradient(180deg, #1a2027 0%, #141a20 100%);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  padding: 10px 10px;
+  border-bottom: 1px solid #000;
+  box-shadow: inset 0 -1px 0 var(--hairline-strong);
+  color: var(--text-dim);
+  font-weight: 700;
+}
+table.trade tbody tr { border-bottom: 1px solid var(--hairline); }
+table.trade tbody tr:nth-child(even) { background: rgba(255,255,255,0.012); }
+table.trade tbody tr:hover { background: rgba(201,211,74,0.03); }
+table.trade tbody tr.selected {
+  background: rgba(201,211,74,0.06);
+  box-shadow: inset 3px 0 0 var(--radar);
+}
+
+/* Mode chip: stencil look */
+.mode-chip {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  padding: 2px 6px;
+  border-radius: 0;
+  border-width: 1px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SENSITIVITY STRIP — mount it like a panel instrument
+   ═══════════════════════════════════════════════════════════════════ */
+.slider-card {
+  background:
+    linear-gradient(180deg, #12171c 0%, #0c1014 100%);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 0;
+  padding: 14px 18px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+}
+.slider-card .sc-title {
+  font-size: 10px; letter-spacing: 0.2em;
+  color: var(--text-faint);
+  border-bottom: 1px dotted var(--hairline);
+  padding-bottom: 3px; margin-bottom: 5px;
+}
+.slider-card .sc-val {
+  font-size: 22px; color: var(--radar); font-weight: 700;
+  text-shadow: 0 0 6px rgba(201,211,74,0.25);
+  letter-spacing: 0;
+}
+.slider-card .sc-delta { font-size: 10px; color: var(--text-faint); letter-spacing: 0.08em; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   WARN ITEMS — strip them down
+   ═══════════════════════════════════════════════════════════════════ */
+.warn-item {
+  background: #0c1014;
+  border-left-width: 3px;
+  border-top: 1px solid var(--hairline-strong);
+  border-right: 1px solid var(--hairline-strong);
+  border-bottom: 1px solid var(--hairline-strong);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0;
+}
+.warn-item .sev {
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  border: none;
+  padding: 0;
+  background: none;
+  margin-right: 6px;
+}
+.warn-item.WARNING { border-left-color: var(--lock); }
+.warn-item.CAUTION { border-left-color: var(--amber); }
+.warn-item.INFO    { border-left-color: var(--cyan); }
+
+/* Remove leftover card-y drop shadow from elsewhere */
+.panel, .table-wrap, .slider-card, .side-section { box-shadow: none; }
+
+
+/* ============================================================
+   MASTER ALARM PROPAGATION — v1 measured
+   Alarm state classes on body shift the --alarm CSS var, which
+   selected surfaces reference. Restraint: borders, pills, accents
+   only — numbers stay phosphor except the specific tripped metric.
+   ============================================================ */
+
+body {
+  --alarm: var(--radar);
+  --alarm-dim: var(--radar-dim);
+  --alarm-glow: var(--radar-glow);
+  --alarm-wash: rgba(110,224,106,0);
+  transition: --alarm 0.2s linear;
+}
+body.alarm-caution {
+  --alarm: var(--amber);
+  --alarm-dim: rgba(245,176,65,0.55);
+  --alarm-glow: rgba(245,176,65,0.35);
+  --alarm-wash: rgba(245,176,65,0.025);
+}
+body.alarm-warning {
+  --alarm: var(--lock);
+  --alarm-dim: rgba(255,77,61,0.55);
+  --alarm-glow: rgba(255,77,61,0.4);
+  --alarm-wash: rgba(255,77,61,0.04);
+}
+
+/* Solver pill in topbar */
+.solver-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--hairline-strong);
+  color: var(--text-dim);
+  font-weight: 600; letter-spacing: 0.1em;
+}
+.solver-pill .dot { width: 8px; height: 8px; background: var(--radar); box-shadow: 0 0 6px var(--radar-glow); }
+body.alarm-caution .solver-pill,
+body.alarm-warning .solver-pill {
+  border-color: var(--alarm);
+  color: var(--alarm);
+  background: rgba(0,0,0,0.4);
+  box-shadow: inset 0 0 12px var(--alarm-glow);
+}
+body.alarm-caution .solver-pill .dot,
+body.alarm-warning .solver-pill .dot {
+  background: var(--alarm);
+  box-shadow: 0 0 8px var(--alarm-glow);
+  animation: alarm-blink 1.2s steps(2, end) infinite;
+}
+body.alarm-warning .solver-pill .dot { animation-duration: 0.6s; }
+@keyframes alarm-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0.3; }
+}
+
+/* Top-bar gets a thin top-stripe under warning */
+body.alarm-warning .topbar {
+  border-top: 2px solid var(--lock);
+}
+body.alarm-caution .topbar {
+  border-top: 2px solid var(--amber);
+  border-top-style: dashed;
+}
+
+/* Advisory panel frame recolors */
+body.alarm-caution .advisory-panel,
+body.alarm-warning .advisory-panel {
+  border-color: var(--alarm);
+  box-shadow: inset 0 0 0 1px var(--alarm-dim);
+}
+body.alarm-caution .advisory-panel .panel-head,
+body.alarm-warning .advisory-panel .panel-head {
+  border-bottom-color: var(--alarm);
+  color: var(--alarm);
+}
+body.alarm-caution .advisory-panel .ph-id,
+body.alarm-warning .advisory-panel .ph-id {
+  color: var(--alarm);
+  border-color: var(--alarm);
+}
+
+/* Tripped metric card (prop fraction) gets an alarm border.
+   The prop-fraction metric is the 3rd in the key-metrics grid. */
+body.alarm-caution .panel .metric-grid .metric:nth-child(3),
+body.alarm-warning .panel .metric-grid .metric:nth-child(3) {
+  box-shadow: inset 0 0 0 1px var(--alarm);
+}
+body.alarm-caution .panel .metric-grid .metric:nth-child(3) .metric-val,
+body.alarm-warning .panel .metric-grid .metric:nth-child(3) .metric-val {
+  color: var(--alarm);
+}
+
+/* Wet-mass metric also colors under warning (delta blew up) */
+body.alarm-warning .panel .metric-grid .metric:nth-child(1) .metric-val {
+  color: var(--alarm);
+}
+
+/* Top candidate left-accent rail shifts */
+body.alarm-caution .section-title::before,
+body.alarm-warning .section-title::before {
+  background: var(--alarm);
+}
+
+/* Ranked table: top (selected) row accent shifts */
+body.alarm-caution table.trade tbody tr.row-top-candidate,
+body.alarm-warning table.trade tbody tr.row-top-candidate {
+  box-shadow: inset 3px 0 0 var(--alarm);
+  background: var(--alarm-wash);
+}
+
+/* Slider: track fill beyond caution/warning thresholds */
+body.alarm-caution .slider-card .sc-val,
+body.alarm-warning .slider-card .sc-val { color: var(--alarm); }
+
+/* Very faint peripheral vignette — only under warning */
+body.alarm-warning::after {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 998;
+  box-shadow: inset 0 0 120px rgba(255,77,61,0.18);
+}
+body.alarm-caution::after {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 998;
+  box-shadow: inset 0 0 100px rgba(245,176,65,0.10);
+}
+
+/* Overrides in case two ::before rules collide — body already has one
+   (grid paper). Use a later pseudo layer instead. */

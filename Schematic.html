@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=1400"/>
+<title>Schematic · Propulsion Trade Tool</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Azeret+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="style.css"/>
+<style>
+  body { overflow-y: auto; }
+  .schematic-page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px 24px 60px;
+  }
+  .sp-crumbs {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 18px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+  }
+  .sp-crumbs a {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 10px;
+    background: var(--bg-elev);
+    border: 1px solid var(--hairline);
+    color: var(--text);
+    text-decoration: none;
+    border-radius: 0;
+    transition: all 100ms ease;
+  }
+  .sp-crumbs a:hover { border-color: var(--accent); color: var(--accent); }
+  .sp-crumbs .sp-sep { color: var(--text-faint); }
+  .sp-crumbs .sp-current { color: var(--radar); }
+
+  .sp-title-row {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: 18px;
+  }
+  .sp-title-row h1 {
+    font-family: var(--font-sans);
+    font-weight: 500;
+    font-size: 24px;
+    letter-spacing: 0.04em;
+    color: var(--text-bright);
+    margin: 0 0 4px;
+    text-transform: uppercase;
+  }
+  .sp-title-row .sp-subtitle {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+  }
+  .sp-config-meta {
+    display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-faint);
+    letter-spacing: 0.1em;
+  }
+  .sp-config-meta .row { display: flex; gap: 8px; align-items: center; }
+  .sp-config-meta .k { color: var(--text-faint); }
+  .sp-config-meta .v { color: var(--text); }
+
+  /* Config picker */
+  .sp-cfg-picker {
+    background: var(--bg-elev);
+    color: var(--radar);
+    border: 1px solid var(--hairline);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 5px 8px;
+    letter-spacing: 0.06em;
+  }
+
+  .sp-main {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 18px;
+  }
+  .sp-svg-panel {
+    background: var(--bg-elev);
+    border: 1px solid var(--hairline);
+    padding: 20px 28px;
+    position: relative;
+  }
+  .sp-svg-panel::before, .sp-svg-panel::after,
+  .sp-svg-panel > .bl, .sp-svg-panel > .br { display: none; }
+  .sp-svg-panel svg { display: block; width: 100%; height: auto; }
+
+  .sp-side {
+    display: flex; flex-direction: column; gap: 14px;
+  }
+
+  .sp-callout {
+    background: var(--bg-elev);
+    border: 1px solid var(--hairline);
+    padding: 14px 16px;
+  }
+  .sp-callout h3 {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: var(--text-faint);
+    margin: 0 0 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .sp-callout .row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 3px 0;
+    color: var(--text-dim);
+  }
+  .sp-callout .row .k { color: var(--text-faint); letter-spacing: 0.06em; }
+  .sp-callout .row .v { color: var(--text); font-weight: 500; }
+  .sp-callout .row .v.pass { color: var(--radar); }
+  .sp-callout .row .v.warn { color: var(--ox-amber); }
+  .sp-callout .row .v.fail { color: var(--alarm); }
+
+  .sp-bom {
+    background: var(--bg-elev);
+    border: 1px solid var(--hairline);
+    padding: 14px 16px;
+  }
+  .sp-bom h3 {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: var(--text-faint);
+    margin: 0 0 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .sp-bom-item {
+    padding: 8px 0;
+    border-bottom: 1px dashed var(--hairline-soft);
+  }
+  .sp-bom-item:last-child { border-bottom: none; }
+  .sp-bom-tag {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    color: var(--radar);
+    background: rgba(201, 211, 74, 0.08);
+    border: 1px solid rgba(201, 211, 74, 0.18);
+    padding: 1px 6px;
+    margin-right: 8px;
+  }
+  .sp-bom-item .sp-bom-name {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text);
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+  .sp-bom-item .sp-bom-spec {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 2px;
+    letter-spacing: 0.02em;
+  }
+  .sp-bom-item .sp-bom-heritage {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    color: var(--text-faint);
+    margin-top: 3px;
+    letter-spacing: 0.04em;
+  }
+
+  .sp-zone-legend {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 10px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+  }
+  .sp-zone-legend .num {
+    color: var(--radar);
+    letter-spacing: 0.14em;
+  }
+  .sp-zone-legend .desc {
+    color: var(--text-dim);
+  }
+</style>
+</head>
+<body>
+
+<div id="topbar-root"></div>
+
+<div id="schem-root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script src="data.js"></script>
+<script src="pid.js"></script>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+// ── resolve config from ?cfg=C07 ──────────────────────────────
+function getCfgId() {
+  const p = new URLSearchParams(location.search);
+  const id = p.get('cfg');
+  if (id && CONFIGS.some(c => c.id === id)) return id;
+  return CONFIGS[0].id;
+}
+
+function SchematicPage() {
+  const [cfgId, setCfgId] = useState(getCfgId());
+  const cfg = CONFIGS.find(c => c.id === cfgId) || CONFIGS[0];
+  const isBiprop = cfg.oxTank !== null;
+  const eng = cfg.engine;
+  const ft = cfg.fuelTank;
+  const ot = cfg.oxTank;
+  const pr = cfg.press;
+
+  // Where to return to — from the ?from= query, fallback to v2
+  const backHref = (() => {
+    const raw = new URL(location.href).searchParams.get('from');
+    const safe = (raw && /^[\w%\-.\s]+\.html$/i.test(raw)) ? raw : 'v2 Mission Control.html';
+    return `${safe}?cfg=${cfgId}`;
+  })();
+
+  useEffect(() => {
+    const u = new URL(location.href);
+    u.searchParams.set('cfg', cfgId);
+    history.replaceState(null, '', u.toString());
+  }, [cfgId]);
+
+  // Computed margins for callout
+  const feedMargin = ft.meop > 0 && eng.feedP > 0 ? ((ft.meop - eng.feedP) / eng.feedP) : 0;
+  const feedClass = feedMargin < 0.1 ? 'fail' : feedMargin < 0.3 ? 'warn' : 'pass';
+  const pcPredict = (eng.feedP * 0.78).toFixed(1);
+  const blowdown = (pr.storeP / pr.feedP).toFixed(2);
+
+  // Build BOM
+  const bom = [
+    { tag: 'E-1', name: `${eng.mfr} ${eng.model}`, spec: `${eng.thrust} N · Isp ${eng.isp} s · ${eng.mass.toFixed(2)} kg`, heritage: eng.heritage },
+    { tag: 'TK-1', name: `Pressurant Bottle · ${pr.gas}`, spec: `${pr.tankL.toFixed(1)} L · ${pr.storeP} bar MEOP · ${pr.tankKg.toFixed(2)} kg dry`, heritage: 'COPV, commercial' },
+    { tag: 'TK-2', name: `${ft.mfr} ${ft.model}`, spec: `${ft.volL} L · ${ft.meop} bar · ${ft.dry.toFixed(1)} kg · ${ft.type}`, heritage: ft.heritage },
+  ];
+  if (isBiprop) {
+    bom.push({ tag: 'TK-3', name: `${ot.mfr} ${ot.model}`, spec: `${ot.volL} L · ${ot.meop} bar · ${ot.dry.toFixed(1)} kg · ${ot.type}`, heritage: ot.heritage });
+  }
+
+  return (
+    <div className="schematic-page">
+
+      <div className="sp-crumbs">
+        <a href={backHref}>◀ MISSION CONTROL</a>
+        <span className="sp-sep">/</span>
+        <span>CONFIG {cfgId}</span>
+        <span className="sp-sep">/</span>
+        <span className="sp-current">SCHEMATIC · PID-{cfgId}-R01</span>
+      </div>
+
+      <div className="sp-title-row">
+        <div>
+          <h1>PID-{cfgId}-R01 · {isBiprop ? 'Bipropellant' : 'Monopropellant'} Feed System</h1>
+          <div className="sp-subtitle">
+            {eng.mfr} {eng.model} · {eng.mode.toUpperCase()} · REGULATED
+            {eng.itar && <span style={{color: 'var(--alarm)', marginLeft: 10}}>⚠ ITAR · 9A004</span>}
+          </div>
+        </div>
+        <div className="sp-config-meta">
+          <div className="row"><span className="k">DRY MASS</span><span className="v">500 kg</span></div>
+          <div className="row"><span className="k">ΔV</span><span className="v">300 m/s</span></div>
+          <div className="row"><span className="k">STATUS</span><span className="v">{cfg.pareto ? 'PARETO' : 'DOMINATED'}</span></div>
+          <select className="sp-cfg-picker" value={cfgId} onChange={e => setCfgId(e.target.value)} style={{marginTop: 6}}>
+            {CONFIGS.map(c => (
+              <option key={c.id} value={c.id}>{c.id} — {c.engine.mfr} {c.engine.model}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="sp-main">
+        <div className="sp-svg-panel" dangerouslySetInnerHTML={{__html: buildPIDDetailed(cfg)}}/>
+
+        <div className="sp-side">
+
+          <div className="sp-callout">
+            <h3>MARGINS · PRESSURES</h3>
+            <div className="row"><span className="k">Feed Margin</span><span className={`v ${feedClass}`}>{(feedMargin*100).toFixed(0)}%</span></div>
+            <div className="row"><span className="k">Tank MEOP</span><span className="v">{ft.meop} bar</span></div>
+            <div className="row"><span className="k">Engine Feed</span><span className="v">{eng.feedP.toFixed(1)} bar</span></div>
+            <div className="row"><span className="k">Pc (pred)</span><span className="v">{pcPredict} bar</span></div>
+            <div className="row"><span className="k">Pressurant P₀</span><span className="v">{pr.storeP} bar</span></div>
+            <div className="row"><span className="k">Blowdown ratio</span><span className="v">{blowdown}</span></div>
+          </div>
+
+          <div className="sp-callout">
+            <h3>ZONE INDEX</h3>
+            <div className="sp-zone-legend">
+              <span className="num">Z1</span><span className="desc">Pressurant Supply — He bottle, isolation, series-redundant reg, filter</span>
+              <span className="num">Z2</span><span className="desc">Propellant Feed — check valves, prop tanks, PT/TT instrumentation</span>
+              <span className="num">Z3</span><span className="desc">Thrust Chamber Assy — pyro iso, latch, engine-inlet PT, chamber</span>
+            </div>
+          </div>
+
+          <div className="sp-bom">
+            <h3>BILL OF MATERIALS</h3>
+            {bom.map(item => (
+              <div className="sp-bom-item" key={item.tag}>
+                <div>
+                  <span className="sp-bom-tag">{item.tag}</span>
+                  <span className="sp-bom-name">{item.name}</span>
+                </div>
+                <div className="sp-bom-spec">{item.spec}</div>
+                <div className="sp-bom-heritage">heritage · {item.heritage}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="sp-callout">
+            <h3>DRAWING INDEX</h3>
+            <div className="row"><span className="k">Drawing</span><span className="v">PID-{cfgId}-R01</span></div>
+            <div className="row"><span className="k">Revision</span><span className="v">R01</span></div>
+            <div className="row"><span className="k">Sheet</span><span className="v">1 / 1</span></div>
+            <div className="row"><span className="k">Standard</span><span className="v">ISA-5.1</span></div>
+            <div className="row"><span className="k">Drawn</span><span className="v">TRADEDECK</span></div>
+            <div className="row"><span className="k">Classification</span><span className={`v ${eng.itar ? 'fail' : 'pass'}`}>{eng.itar ? 'ITAR 9A004' : 'EAR-99'}</span></div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('schem-root')).render(<SchematicPage/>);
+</script>
+
+</body>
+</html>
