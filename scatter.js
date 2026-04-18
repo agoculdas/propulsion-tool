@@ -75,6 +75,47 @@ window.buildScatter = function(configs, selectedId, pinned) {
     // Label
     const last = pareto[pareto.length - 1];
     parts.push(`<text x="${lx(last.engine.thrust) + 10}" y="${ly(last.budget.wet) - 6}" ${font} font-size="9" fill="${col.pareto}" letter-spacing="0.1em">PARETO FRONTIER</text>`);
+
+    // --- MK 2 missile-lock: outer axis-aligned square + inner 45°-rotated square ---
+    if (window.MARK_BLOCK && /MK\s*2/i.test(window.MARK_BLOCK)) {
+      const best = configs.find(c => c.id === selectedId) || configs.find(c => c.pareto) || configs[0];
+      const cx = lx(best.engine.thrust);
+      const cy = ly(best.budget.wet);
+      const red = '#ff3a2e';
+      const outer = 22;           // outer square half-size (axis-aligned)
+      const inner = outer; // inner diamond vertices touch outer edges
+      const cl = 9;               // corner L-bracket leg length
+
+      parts.push(`<g class="lock-box" style="mix-blend-mode:screen">`);
+      // faint fill
+      parts.push(`<rect x="${cx-outer}" y="${cy-outer}" width="${outer*2}" height="${outer*2}" fill="${red}" fill-opacity="0.05" stroke="none"/>`);
+      // outer axis-aligned square — 4 corner L-brackets
+      const corners = [
+        [cx-outer, cy-outer, +1, +1],
+        [cx+outer, cy-outer, -1, +1],
+        [cx-outer, cy+outer, +1, -1],
+        [cx+outer, cy+outer, -1, -1],
+      ];
+      corners.forEach(([ccx, ccy, dx, dy]) => {
+        parts.push(`<path d="M ${ccx} ${ccy + dy*cl} L ${ccx} ${ccy} L ${ccx + dx*cl} ${ccy}" stroke="${red}" stroke-width="1.6" fill="none" stroke-linecap="square"/>`);
+      });
+      // inner 45°-rotated square (diamond) — full outline, thinner
+      parts.push(`<polygon points="${cx},${cy-inner} ${cx+inner},${cy} ${cx},${cy+inner} ${cx-inner},${cy}" fill="none" stroke="${red}" stroke-width="0.9" opacity="0.85"/>`);
+      // diamond vertex ticks
+      parts.push(`<line x1="${cx}" y1="${cy-inner-3}" x2="${cx}" y2="${cy-inner+3}" stroke="${red}" stroke-width="0.8"/>`);
+      parts.push(`<line x1="${cx}" y1="${cy+inner-3}" x2="${cx}" y2="${cy+inner+3}" stroke="${red}" stroke-width="0.8"/>`);
+      parts.push(`<line x1="${cx-inner-3}" y1="${cy}" x2="${cx-inner+3}" y2="${cy}" stroke="${red}" stroke-width="0.8"/>`);
+      parts.push(`<line x1="${cx+inner-3}" y1="${cy}" x2="${cx+inner+3}" y2="${cy}" stroke="${red}" stroke-width="0.8"/>`);
+      // label plate — above box, right-aligned to outer edge
+      const labelW = 92;
+      const labelY = cy - outer - 6;
+      parts.push(`<g class="lock-label">`);
+      parts.push(`<rect x="${cx+outer - labelW}" y="${labelY - 10}" width="${labelW}" height="12" fill="#0a0d0f" stroke="${red}" stroke-width="0.6"/>`);
+      parts.push(`<circle cx="${cx+outer - labelW + 6}" cy="${labelY - 4}" r="2" fill="${red}"><animate attributeName="opacity" values="1;0.2;1" dur="0.9s" repeatCount="indefinite"/></circle>`);
+      parts.push(`<text x="${cx+outer - labelW + 12}" y="${labelY - 1}" ${font} font-size="8.5" fill="${red}" letter-spacing="0.18em">LOCK · ${best.id}</text>`);
+      parts.push(`</g>`);
+      parts.push(`</g>`);
+    }
   }
 
   // Points
