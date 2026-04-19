@@ -208,22 +208,22 @@
 
 <!-- Solver (ported from tank_selector.py; runs client-side) -->
 <!-- Data modules (auto-generated from Python via tools/export_catalog.py) -->
-<script src="solver/tanks-data.js?v=36"></script>
-<script src="solver/engines-data.js?v=36"></script>
+<script src="solver/tanks-data.js?v=39"></script>
+<script src="solver/engines-data.js?v=39"></script>
 <!-- Behaviour modules (hand-written) -->
-<script src="solver/constants.js?v=36"></script>
-<script src="solver/tanks.js?v=36"></script>
-<script src="solver/engines.js?v=36"></script>
-<script src="solver/pressurant.js?v=36"></script>
-<script src="solver/sizer.js?v=36"></script>
-<script src="solver/tradeStudy.js?v=36"></script>
-<script src="solver/adapter.js?v=36"></script>
+<script src="solver/constants.js?v=39"></script>
+<script src="solver/tanks.js?v=39"></script>
+<script src="solver/engines.js?v=39"></script>
+<script src="solver/pressurant.js?v=39"></script>
+<script src="solver/sizer.js?v=39"></script>
+<script src="solver/tradeStudy.js?v=39"></script>
+<script src="solver/adapter.js?v=39"></script>
 
-<script src="data.js?v=36"></script>
-<script src="pid.js?v=36"></script>
+<script src="data.js?v=39"></script>
+<script src="pid.js?v=39"></script>
 
 <script type="text/babel">
-const { useState, useEffect } = React;
+const { useState, useEffect, useMemo } = React;
 
 // ── resolve config from ?cfg=C07 ──────────────────────────────
 function getCfgId() {
@@ -233,9 +233,34 @@ function getCfgId() {
   return CONFIGS[0].id;
 }
 
+// Read mission overrides from URL: ?dry=850&dv=4720&hwm=0.10
+// Falls back to BASELINE if missing.
+function getMission() {
+  const p = new URLSearchParams(location.search);
+  const dryMass = parseFloat(p.get('dry'));
+  const deltaV  = parseFloat(p.get('dv'));
+  const hwMargin = parseFloat(p.get('hwm'));
+  return {
+    dryMass:  Number.isFinite(dryMass) ? dryMass : (window.BASELINE && window.BASELINE.dryMass) || 500,
+    deltaV:   Number.isFinite(deltaV)  ? deltaV  : (window.BASELINE && window.BASELINE.deltaV)  || 300,
+    hwMargin: Number.isFinite(hwMargin) ? hwMargin : 0,
+  };
+}
+
 function SchematicPage() {
   const [cfgId, setCfgId] = useState(getCfgId());
-  const cfg = CONFIGS.find(c => c.id === cfgId) || CONFIGS[0];
+  const mission = getMission();
+
+  // Re-solve at the URL-passed mission so the schematic reflects the same
+  // tank picks the user saw in Mission Control. If we just used the baseline
+  // CONFIGS (computed at 500/300), tank counts and pressurant could differ
+  // from what was selected.
+  const liveConfigs = useMemo(() => {
+    const res = window.solveMission(mission, {});
+    return res.configs;
+  }, [mission.dryMass, mission.deltaV, mission.hwMargin]);
+
+  const cfg = liveConfigs.find(c => c.id === cfgId) || liveConfigs[0] || CONFIGS[0];
   const isBiprop = cfg.oxTank !== null;
   const eng = cfg.engine;
   const ft = cfg.fuelTank;
@@ -261,14 +286,57 @@ function SchematicPage() {
   const pcPredict = (eng.feedP * 0.78).toFixed(1);
   const blowdown = (pr.storeP / pr.feedP).toFixed(2);
 
-  // Build BOM
+  // Multi-tank check — warn the user that the SVG draws one tank per role
+  // even when count > 1 (real plumbing has parallel tanks with cross-header).
+  const multiTank = (ft.count || 1) > 1 || (ot && (ot.count || 1) > 1) || (pr.tankCount || 1) > 1;
+
+  // Helper to format an item as "Nx Model" when count > 1
+  const fmt = (item, count, volEach, dryEach) => {
+    const n = count || 1;
+    if (n === 1) {
+      return { spec: `${volEach} L · ${item.meop || ''} bar · ${dryEach.toFixed(1)} kg`.replace(' bar ·', '').trim() + ` · ${item.type || ''}`.replace(/ · $/, '') };
+    }
+    return { spec: `${n}× @ ${Math.round(volEach)} L each · ${item.meop || ''} bar · ${(dryEach * n).toFixed(1)} kg total` };
+  };
+
+  // Build BOM with proper multi-tank rendering
   const bom = [
     { tag: 'E-1', name: `${eng.mfr} ${eng.model}`, spec: `${eng.thrust} N · Isp ${eng.isp} s · ${eng.mass.toFixed(2)} kg`, heritage: eng.heritage },
-    { tag: 'TK-1', name: `Pressurant Bottle · ${pr.gas}`, spec: `${pr.tankL.toFixed(1)} L · ${pr.storeP} bar MEOP · ${pr.tankKg.toFixed(2)} kg dry`, heritage: 'COPV, commercial' },
-    { tag: 'TK-2', name: `${ft.mfr} ${ft.model}`, spec: `${ft.volL} L · ${ft.meop} bar · ${ft.dry.toFixed(1)} kg · ${ft.type}`, heritage: ft.heritage },
   ];
+  // Pressurant: show count if > 1
+  const pcount = pr.tankCount || 1;
+  if (pcount === 1) {
+    bom.push({ tag: 'TK-1', name: `Pressurant Bottle · ${pr.gas}`,
+      spec: `${pr.tankL.toFixed(1)} L · ${pr.storeP} bar MEOP · ${pr.tankKg.toFixed(2)} kg dry`,
+      heritage: 'COPV, commercial' });
+  } else {
+    bom.push({ tag: 'TK-1', name: `Pressurant Bottles (${pcount}×) · ${pr.gas}`,
+      spec: `${pcount}× @ ${pr.tankVolEachL} L each · ${pr.storeP} bar MEOP · ${pr.tankKg.toFixed(2)} kg total`,
+      heritage: pr.source || 'COPV, commercial' });
+  }
+  // Fuel tank: show count if > 1
+  const fcount = ft.count || 1;
+  if (fcount === 1) {
+    bom.push({ tag: 'TK-2', name: `${ft.mfr} ${ft.model}`,
+      spec: `${Math.round(ft.volL)} L · ${ft.meop} bar · ${ft.dry.toFixed(1)} kg · ${ft.type}`,
+      heritage: ft.heritage });
+  } else {
+    bom.push({ tag: 'TK-2', name: `${ft.mfr} ${ft.model} (${fcount}×)`,
+      spec: `${fcount}× @ ${Math.round(ft.volL)} L each · ${ft.meop} bar · ${(ft.dry * fcount).toFixed(1)} kg total · ${ft.type}`,
+      heritage: ft.heritage });
+  }
+  // Ox tank
   if (isBiprop) {
-    bom.push({ tag: 'TK-3', name: `${ot.mfr} ${ot.model}`, spec: `${ot.volL} L · ${ot.meop} bar · ${ot.dry.toFixed(1)} kg · ${ot.type}`, heritage: ot.heritage });
+    const ocount = ot.count || 1;
+    if (ocount === 1) {
+      bom.push({ tag: 'TK-3', name: `${ot.mfr} ${ot.model}`,
+        spec: `${Math.round(ot.volL)} L · ${ot.meop} bar · ${ot.dry.toFixed(1)} kg · ${ot.type}`,
+        heritage: ot.heritage });
+    } else {
+      bom.push({ tag: 'TK-3', name: `${ot.mfr} ${ot.model} (${ocount}×)`,
+        spec: `${ocount}× @ ${Math.round(ot.volL)} L each · ${ot.meop} bar · ${(ot.dry * ocount).toFixed(1)} kg total · ${ot.type}`,
+        heritage: ot.heritage });
+    }
   }
 
   return (
@@ -291,16 +359,43 @@ function SchematicPage() {
           </div>
         </div>
         <div className="sp-config-meta">
-          <div className="row"><span className="k">DRY MASS</span><span className="v">500 kg</span></div>
-          <div className="row"><span className="k">ΔV</span><span className="v">300 m/s</span></div>
+          <div className="row"><span className="k">DRY MASS</span><span className="v">{mission.dryMass} kg</span></div>
+          <div className="row"><span className="k">ΔV</span><span className="v">{mission.deltaV} m/s</span></div>
+          {mission.hwMargin > 0 && (
+            <div className="row"><span className="k">HW MARGIN</span><span className="v">{(mission.hwMargin * 100).toFixed(0)}%</span></div>
+          )}
+          <div className="row"><span className="k">WET MASS</span><span className="v">{cfg.budget.wet.toFixed(1)} kg</span></div>
           <div className="row"><span className="k">STATUS</span><span className="v">{cfg.pareto ? 'PARETO' : 'DOMINATED'}</span></div>
           <select className="sp-cfg-picker" value={cfgId} onChange={e => setCfgId(e.target.value)} style={{marginTop: 6}}>
-            {CONFIGS.map(c => (
-              <option key={c.id} value={c.id}>{c.id} — {c.engine.mfr} {c.engine.model}</option>
+            {liveConfigs.map(c => (
+              <option key={c.id} value={c.id}>{c.engine.mfr} {c.engine.model} · {c.budget.wet.toFixed(0)}kg</option>
             ))}
           </select>
         </div>
       </div>
+
+      {multiTank && (
+        <div style={{
+          padding: '10px 14px',
+          marginBottom: 14,
+          background: 'rgba(245,176,65,0.06)',
+          border: '1px solid rgba(245,176,65,0.35)',
+          borderLeft: '3px solid var(--ox-amber, #d8a84a)',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 11,
+          color: 'var(--text)',
+          letterSpacing: '0.04em',
+        }}>
+          <span style={{color: 'var(--ox-amber, #d8a84a)', fontWeight: 700, marginRight: 8, letterSpacing: '0.16em'}}>INFO</span>
+          Schematic shows ONE tank per role. Real plumbing for this config uses{' '}
+          {(ft.count || 1) > 1 && <strong>{ft.count}× fuel tanks</strong>}
+          {(ft.count || 1) > 1 && (ot && (ot.count || 1) > 1) && ', '}
+          {ot && (ot.count || 1) > 1 && <strong>{ot.count}× ox tanks</strong>}
+          {((ft.count || 1) > 1 || (ot && (ot.count || 1) > 1)) && (pr.tankCount || 1) > 1 && ', '}
+          {(pr.tankCount || 1) > 1 && <strong>{pr.tankCount}× pressurant bottles</strong>}
+          {' '}with parallel cross-header — see BOM for actual counts and total mass.
+        </div>
+      )}
 
       <div className="sp-main">
         <div className="sp-svg-panel" dangerouslySetInnerHTML={{__html: buildPIDDetailed(cfg)}}/>

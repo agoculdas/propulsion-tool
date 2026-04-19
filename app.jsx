@@ -544,7 +544,7 @@ function HeroTopConfig({ cfg, dv, selectedId, setSelectedId, feasible, dryMass, 
   return (
     <section style={{marginBottom: 28}}>
       <div className="top-candidate-bar compact">
-        <a href={`Schematic.html?cfg=${cfg.id}&from=${encodeURIComponent(location.pathname.split('/').pop())}`} className="schematic-open-btn compact" aria-label="Open detailed schematic">
+        <a href={`Schematic.html?cfg=${cfg.id}&dry=${dryMass}&dv=${dv}&from=${encodeURIComponent(location.pathname.split('/').pop())}`} className="schematic-open-btn compact" aria-label="Open detailed schematic">
           <span className="sob-led"/>
           <span className="sob-face">
             <span className="sob-main">OPEN DETAILED DESIGN</span>
