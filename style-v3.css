@@ -1,0 +1,1735 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   PROPULSION TRADE TOOL · MK 3 BLK 1 — "Analogue 70s"
+   Ref: EAI PACE TR-48 · Apollo MOCR · Saturn V ground instrumentation
+   All rules scoped under .mk3 so this cascade cannot leak into v1/v2.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Fonts: Nixie-era readouts + silkscreen labels + teletype body ────── */
+/* ── Fonts: one family set, committed ─────────────────────────────────
+   · Audiowide      — Nixie readouts (rounded, neon-friendly digits)
+   · Archivo        — silkscreen labels (industrial grotesque, not SaaS)
+   · JetBrains Mono — teletype / body / telemetry
+   · Caveat         — handwritten notes on the vellum
+   ── Rationale: v2/v3 were leaning Inter-adjacent (Work Sans/IBM Plex),
+   which reads "SaaS product page". Archivo/JetBrains feels industrial,
+   printed, and equipment-coded. */
+@import url('https://fonts.googleapis.com/css2?family=Audiowide&family=Archivo:wght@500;600;700;800&family=DM+Mono:wght@400;500&family=Caveat:wght@400;600&display=swap');
+
+.mk3 {
+  /* Warm-grey painted steel palette — tuned toward EAI PACE TR-48 beige/putty */
+  --steel:        #8a8274;
+  --steel-hi:     #a09686;
+  --steel-lo:     #6b6458;
+  --steel-deep:   #4d4840;
+  --seam:         #2e2a24;
+  --rack-black:   #1c1a17;
+  --rack-black-2: #26221d;
+
+  /* Silkscreen / engraved label colors */
+  --silk:         #e8dfc8;
+  --silk-dim:     #cdc2a6;
+  --engrave:      #1b1915;
+  --dymo:         #2a2721;
+  --dymo-ink:     #f2e8cf;
+
+  /* Readouts */
+  --nixie:        #ff7a2e;   /* primary neon-orange */
+  --nixie-glow:   rgba(255,122,46,0.55);
+  --nixie-dim:    #8a3a14;
+  --amber:        #d8a84a;
+  --amber-glow:   rgba(216,168,74,0.55);
+  --draft-blue:   #486b9a;
+  --red:          #c43428;
+  --red-glow:     rgba(196,52,40,0.55);
+  --green-bar:    #c7d4b4;
+  --green-bar-2:  #e7e3cb;
+
+  /* Fonts */
+  --font-nixie:   "Audiowide", "Share Tech Mono", system-ui, monospace;
+  --font-label:   "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body:    "DM Mono", ui-monospace, Menlo, monospace;
+  --font-hand:    "Caveat", cursive;
+
+  /* Tweakable panel color (overridden via Tweaks) */
+  --panel-hue: 38;
+  --panel-chroma: 0.015;
+  --panel-light: 0.55;
+
+  /* ── Base typography + backdrop ──────────────────────────────────── */
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--silk);
+  background:
+    /* rack interior */
+    radial-gradient(ellipse at 50% 0%, #2b2620 0%, var(--rack-black) 55%, #0e0c0a 100%);
+  min-height: 100vh;
+  padding: 0;
+  letter-spacing: 0.01em;
+}
+
+/* Normalize */
+.mk3 *, .mk3 *::before, .mk3 *::after { box-sizing: border-box; }
+
+.mk3 button { font-family: inherit; color: inherit; background: none; border: none; cursor: pointer; padding: 0; }
+.mk3 input, .mk3 select { font-family: inherit; color: inherit; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PAINTED STEEL SURFACE  (shared texture used by rack-face + panels)
+   ═══════════════════════════════════════════════════════════════════════ */
+.mk3-steel {
+  background-color: var(--steel);
+  /* Painted-steel: diagonal brush + noise + subtle highlights */
+  background-image:
+    /* gentle specular gradient top-left to bottom-right */
+    linear-gradient(145deg, rgba(255,245,220,0.10) 0%, rgba(255,245,220,0) 28%, rgba(0,0,0,0.06) 72%, rgba(0,0,0,0.18) 100%),
+    /* vertical brushed micro-texture */
+    repeating-linear-gradient(90deg,
+      rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px,
+      rgba(0,0,0,0.018) 1px,   rgba(0,0,0,0.018) 2px),
+    /* horizontal banding */
+    repeating-linear-gradient(0deg,
+      rgba(0,0,0,0.015) 0px, rgba(0,0,0,0.015) 1px,
+      transparent 1px, transparent 3px);
+  box-shadow:
+    inset 0 1px 0 rgba(255,245,220,0.18),
+    inset 0 -1px 0 rgba(0,0,0,0.30),
+    inset 1px 0 0 rgba(0,0,0,0.12),
+    inset -1px 0 0 rgba(0,0,0,0.12);
+}
+
+/* Black crackle panel face — some panels use this instead of painted steel */
+.mk3-crackle {
+  background-color: #242017;
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(255,230,190,0.03) 0, transparent 2px),
+    radial-gradient(circle at 70% 60%, rgba(255,230,190,0.025) 0, transparent 2px),
+    radial-gradient(circle at 40% 80%, rgba(255,230,190,0.02) 0, transparent 2px),
+    repeating-linear-gradient(45deg,
+      rgba(0,0,0,0.12) 0 1px, transparent 1px 3px);
+  box-shadow:
+    inset 0 1px 0 rgba(255,230,190,0.04),
+    inset 0 -1px 0 rgba(0,0,0,0.6);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PHILLIPS SCREWS — used at every panel corner
+   ═══════════════════════════════════════════════════════════════════════ */
+.mk3-screw {
+  position: absolute;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 30%, #b3a893 0%, #73695a 55%, #3d372d 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(0,0,0,0.5),
+    inset 1px 1px 1px rgba(255,245,220,0.2),
+    0 1px 1px rgba(0,0,0,0.5);
+  z-index: 5;
+}
+.mk3-screw::before, .mk3-screw::after {
+  content: '';
+  position: absolute;
+  background: rgba(0,0,0,0.75);
+  left: 50%; top: 50%;
+}
+.mk3-screw::before { /* vertical slot */
+  width: 1.5px; height: 70%;
+  transform: translate(-50%, -50%) rotate(var(--screw-rot, 22deg));
+}
+.mk3-screw::after { /* horizontal slot */
+  width: 70%; height: 1.5px;
+  transform: translate(-50%, -50%) rotate(var(--screw-rot, 22deg));
+}
+.mk3-screw.tl { top: 8px; left: 8px; --screw-rot: 22deg; }
+.mk3-screw.tr { top: 8px; right: 8px; --screw-rot: -34deg; }
+.mk3-screw.bl { bottom: 8px; left: 8px; --screw-rot: 48deg; }
+.mk3-screw.br { bottom: 8px; right: 8px; --screw-rot: -12deg; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TOP BAR — rack header with project plate + corner screws
+   ═══════════════════════════════════════════════════════════════════════ */
+.mk3-rack-header {
+  position: relative;
+  padding: 18px 26px 16px;
+  min-height: 76px;
+  display: flex; align-items: center; gap: 28px;
+  border-bottom: 2px solid var(--seam);
+}
+.mk3-rack-header::after { /* bottom rack seam */
+  content: '';
+  position: absolute; left: 0; right: 0; bottom: -2px; height: 4px;
+  background:
+    linear-gradient(180deg, rgba(0,0,0,0.6), rgba(0,0,0,0.9));
+  box-shadow: 0 1px 0 rgba(255,245,220,0.05);
+}
+
+/* Embossed project plate */
+.mk3-plate {
+  position: relative;
+  padding: 12px 22px;
+  background:
+    linear-gradient(180deg, #3c352b 0%, #2a251d 50%, #201c15 100%);
+  border: 1px solid #14110d;
+  border-radius: 3px;
+  font-family: var(--font-label);
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--silk);
+  text-shadow:
+    0 -1px 0 rgba(0,0,0,0.9),
+    0 1px 0 rgba(255,245,220,0.10);
+  box-shadow:
+    inset 0 1px 0 rgba(255,245,220,0.10),
+    inset 0 -1px 0 rgba(0,0,0,0.6),
+    0 2px 0 rgba(0,0,0,0.6),
+    0 4px 8px rgba(0,0,0,0.5);
+  white-space: nowrap;
+}
+.mk3-plate-line1 { font-size: 16px; line-height: 1.1; }
+.mk3-plate-line2 {
+  font-size: 10.5px; opacity: 0.75; letter-spacing: 0.3em;
+  margin-top: 3px; color: var(--silk-dim);
+}
+.mk3-plate .mk3-screw { width: 9px; height: 9px; }
+
+.mk3-header-meta {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 22px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--silk-dim);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.mk3-header-meta > span { white-space: nowrap; }
+.mk3-header-meta .label { color: var(--steel-hi); font-size: 9px; letter-spacing: 0.22em; display: block; }
+.mk3-header-meta .val { color: var(--silk); font-family: var(--font-nixie); font-size: 13px; letter-spacing: 0.08em; }
+
+/* Hazard tape — only revealed in caution/warning */
+.mk3-hazard-tape {
+  position: absolute; left: 0; right: 0; bottom: -14px; height: 12px;
+  background: repeating-linear-gradient(135deg,
+    #1c1a17 0 14px,
+    var(--amber) 14px 28px);
+  opacity: 0;
+  transition: opacity 280ms ease;
+  pointer-events: none;
+  z-index: 6;
+}
+.mk3.alarm-caution .mk3-hazard-tape,
+.mk3.alarm-warning .mk3-hazard-tape { opacity: 1; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OVERALL LAYOUT — patch-panel sidebar + main rack
+   ═══════════════════════════════════════════════════════════════════════ */
+.mk3-layout {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px;
+  align-items: start;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   RACK UNIT — base container for every "panel"
+   ═══════════════════════════════════════════════════════════════════════ */
+.mk3-unit {
+  position: relative;
+  padding: 36px 22px 22px;    /* top padding = dymo strip zone */
+  border: 1px solid var(--seam);
+  box-shadow:
+    0 2px 0 rgba(0,0,0,0.55),
+    0 6px 18px rgba(0,0,0,0.4),
+    inset 0 1px 0 rgba(255,245,220,0.08);
+  margin-bottom: 14px;
+}
+.mk3-unit + .mk3-unit { margin-top: 0; }
+
+/* DYMO label strip along the top of every unit */
+.mk3-dymo {
+  position: absolute;
+  top: 10px; left: 18px; right: 18px; height: 18px;
+  background:
+    linear-gradient(180deg, #1f1d18 0%, #282520 55%, #1a1815 100%);
+  border-radius: 2px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 12px;
+  font-family: var(--font-label);
+  font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.26em;
+  font-size: 9.5px;
+  color: var(--dymo-ink);
+  text-shadow: 0 1px 0 rgba(0,0,0,0.8);
+  box-shadow:
+    inset 0 1px 0 rgba(255,245,220,0.08),
+    inset 0 -1px 0 rgba(0,0,0,0.8),
+    0 1px 0 rgba(255,245,220,0.08),
+    0 2px 3px rgba(0,0,0,0.5);
+  z-index: 3;
+}
+.mk3-dymo-sub {
+  font-family: var(--font-body);
+  font-weight: 400;
+  letter-spacing: 0.16em;
+  color: var(--silk-dim);
+  opacity: 0.8;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   NIXIE TUBE READOUTS — individual glass envelopes behind dark acrylic
+   ═══════════════════════════════════════════════════════════════════════ */
+.mk3-nixie-window {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 12px;
+  background:
+    /* acrylic window with deep internal shadow */
+    linear-gradient(180deg, #070503 0%, #120f0a 45%, #0a0806 100%);
+  border: 1px solid #000;
+  border-radius: 3px;
+  box-shadow:
+    inset 0 2px 4px rgba(0,0,0,0.9),
+    inset 0 -1px 0 rgba(255,122,46,0.06),
+    0 1px 0 rgba(255,245,220,0.10),
+    0 0 1px rgba(0,0,0,0.9);
+}
+.mk3-nixie-window::before { /* acrylic reflection sheen */
+  content: '';
+  position: absolute;
+  left: 4px; right: 4px; top: 3px; height: 35%;
+  background: linear-gradient(180deg, rgba(255,245,220,0.06) 0%, transparent 100%);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.mk3-tube {
+  position: relative;
+  width: 22px; height: 34px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background:
+    /* cylindrical glass bulb — glassy gradient */
+    radial-gradient(ellipse 60% 90% at 30% 35%, rgba(255,245,220,0.12) 0%, transparent 55%),
+    radial-gradient(ellipse 80% 100% at 50% 50%, rgba(255,122,46,0.06) 0%, transparent 70%),
+    linear-gradient(180deg, rgba(28,26,23,0.9) 0%, rgba(10,8,6,0.95) 100%);
+  border-radius: 40% 40% 30% 30% / 50% 50% 30% 30%;
+  border: 1px solid rgba(255,245,220,0.10);
+  box-shadow:
+    inset -2px -3px 4px rgba(0,0,0,0.8),
+    inset 2px 2px 3px rgba(255,245,220,0.04);
+  overflow: hidden;
+}
+.mk3-tube::after { /* specular glass highlight */
+  content: '';
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 4px; height: 10px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.4), rgba(255,255,255,0));
+  border-radius: 50%;
+  filter: blur(0.5px);
+  pointer-events: none;
+}
+.mk3-tube-digit {
+  font-family: var(--font-nixie);
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--nixie);
+  text-shadow:
+    0 0 2px var(--nixie),
+    0 0 6px var(--nixie-glow),
+    0 0 14px var(--nixie-glow);
+  letter-spacing: 0;
+  user-select: none;
+  font-weight: 400;
+  margin-top: -3px;
+}
+.mk3-tube.dim .mk3-tube-digit {
+  color: var(--nixie-dim);
+  text-shadow: none;
+  opacity: 0.45;
+}
+.mk3-tube.flicker .mk3-tube-digit {
+  animation: mk3-nixie-flicker 140ms steps(3, end) 1;
+}
+@keyframes mk3-nixie-flicker {
+  0%   { opacity: 1; }
+  25%  { opacity: 0.2; text-shadow: 0 0 1px var(--nixie); }
+  55%  { opacity: 0.8; }
+  75%  { opacity: 0.3; }
+  100% { opacity: 1; }
+}
+
+/* Decimal point tube (narrower) */
+.mk3-tube.dot { width: 9px; }
+.mk3-tube.dot .mk3-tube-digit { font-size: 22px; }
+
+/* Silkscreen label under a Nixie readout */
+.mk3-readout {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.mk3-readout-silk {
+  font-family: var(--font-label);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 9.5px;
+  color: var(--silk);
+  text-shadow: 0 -1px 0 rgba(0,0,0,0.6), 0 1px 0 rgba(255,245,220,0.08);
+  padding-left: 2px;
+}
+.mk3-readout-unit {
+  font-family: var(--font-label);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 9px;
+  color: var(--amber);
+  padding-left: 2px;
+  text-shadow: 0 0 4px var(--amber-glow);
+}
+.mk3-readout-sub {
+  font-family: var(--font-body);
+  font-size: 9.5px;
+  color: var(--silk-dim);
+  letter-spacing: 0.08em;
+  padding-left: 2px;
+  opacity: 0.8;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   HERO STRIP — top candidate bar + vellum schematic + Nixie metrics
+   ═══════════════════════════════════════════════════════════════════════ */
+.mk3-top-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: stretch;
+  margin-bottom: 12px;
+}
+.mk3-top-bar > * { min-width: 0; }
+.mk3-top2 { flex: 1 1 260px; min-width: 260px; }
+.mk3-pid-btn { flex: 0 0 auto; }
+.mk3-selector { flex: 0 1 280px; min-width: 220px; }
+.mk3-hero {
+  display: grid;
+  grid-template-columns: minmax(380px, 1.1fr) minmax(0, 1.5fr);
+  gap: 14px;
+}
+@media (max-width: 1100px) {
+  .mk3-hero { grid-template-columns: minmax(0, 1fr); }
+}
+.mk3-vellum-col {
+  display: flex; flex-direction: column; gap: 14px;
+  min-width: 0;
+}
+/* PID button stretches to match vellum width so it visually anchors the column. */
+.mk3-vellum-col .mk3-pid-btn { width: 100%; }
+
+/* ── OPEN DETAILED DESIGN — guarded illuminated pushbutton ───────────── */
+.mk3-pid-btn {
+  position: relative;
+  display: inline-flex; align-items: center; gap: 18px;
+  padding: 14px 22px 14px 20px;
+  background: linear-gradient(180deg, #3a332a 0%, #262118 100%);
+  border: 1px solid #000;
+  border-radius: 4px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,245,220,0.1),
+    inset 0 -1px 0 rgba(0,0,0,0.6),
+    0 2px 0 rgba(0,0,0,0.6),
+    0 4px 10px rgba(0,0,0,0.5);
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+.mk3-pid-btn:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255,245,220,0.12),
+    0 3px 12px rgba(0,0,0,0.6);
+}
+.mk3-pid-btn:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 2px 6px rgba(0,0,0,0.8);
+}
+
+/* Lamp + cage wrapper — keeps the cage geometry centered over the cap. */
+.mk3-pid-lamp {
+  position: relative;
+  width: 48px; height: 48px;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Mounting base ring under the cage */
+.mk3-pid-lamp::before {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 50%, #1a1714 0%, #0c0a08 70%);
+  box-shadow:
+    inset 0 0 0 1px #000,
+    inset 0 2px 2px rgba(0,0,0,0.9);
+  z-index: 0;
+}
+
+.mk3-pid-cap {
+  position: relative;
+  width: 30px; height: 30px; border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 30%, #ff8b6a 0%, var(--red) 45%, #7a1d14 100%);
+  box-shadow:
+    inset 0 -3px 6px rgba(0,0,0,0.5),
+    inset 0 2px 4px rgba(255,200,180,0.35),
+    0 0 12px var(--red-glow);
+  animation: mk3-red-breathe 3.5s ease-in-out infinite;
+  z-index: 1;
+}
+.mk3-pid-cap::after {
+  content: ''; position: absolute; top: 4px; left: 6px;
+  width: 9px; height: 5px; border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(255,255,255,0.55), transparent 70%);
+}
+
+/* Wire-basket guard cage — six vertical bars bent over the dome,
+   two horizontal rings. Built from pseudo-elements + a single SVG
+   overlay so it stays crisp at any glow level. */
+.mk3-pid-cage {
+  position: absolute;
+  inset: -1px;
+  pointer-events: none;
+  z-index: 2;
+  color: #1a1714;
+  filter: drop-shadow(0 1px 0 rgba(255,245,220,0.08));
+}
+.mk3-pid-cage svg { display: block; width: 100%; height: 100%; }
+
+@keyframes mk3-red-breathe {
+  0%, 100% { box-shadow: inset 0 -3px 6px rgba(0,0,0,0.5), inset 0 2px 4px rgba(255,200,180,0.35), 0 0 10px var(--red-glow); }
+  50%      { box-shadow: inset 0 -3px 6px rgba(0,0,0,0.5), inset 0 2px 4px rgba(255,200,180,0.35), 0 0 18px var(--red-glow); }
+}
+.mk3-pid-face {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  font-family: var(--font-label);
+  font-weight: 700;
+}
+.mk3-pid-main {
+  font-size: 13px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--silk);
+  text-shadow: 0 -1px 0 rgba(0,0,0,0.9);
+}
+.mk3-pid-sub {
+  font-family: var(--font-body); font-weight: 500;
+  font-size: 10px; letter-spacing: 0.16em; color: var(--amber);
+  text-shadow: 0 0 5px var(--amber-glow);
+}
+
+/* ── TOP-2 ALT candidates box (patch-panel-like) ─────────────────────── */
+.mk3-top2 {
+  padding: 10px 14px;
+  background: linear-gradient(180deg, #2c2820 0%, #201c16 100%);
+  border: 1px solid #000;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 rgba(255,245,220,0.08), inset 0 -1px 0 rgba(0,0,0,0.6);
+  display: flex; flex-direction: column; gap: 4px;
+  min-width: 0;
+}
+.mk3-top2-head {
+  font-family: var(--font-label); font-weight: 700;
+  font-size: 9.5px; letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--silk-dim);
+  margin-bottom: 3px;
+}
+.mk3-top2-head .opt { color: var(--amber); text-shadow: 0 0 5px var(--amber-glow); }
+.mk3-top2-row {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--font-body); font-size: 11px;
+  color: var(--silk);
+  padding: 3px 0;
+  cursor: pointer;
+  border-bottom: 1px dashed rgba(255,245,220,0.08);
+}
+.mk3-top2-row:last-child { border-bottom: none; }
+.mk3-top2-row:hover { color: var(--nixie); text-shadow: 0 0 5px var(--nixie-glow); }
+.mk3-top2-rank { color: var(--amber); font-weight: 600; min-width: 22px; }
+.mk3-top2-eng { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mk3-top2-mass { font-family: var(--font-nixie); color: var(--nixie); text-shadow: 0 0 4px var(--nixie-glow); }
+.mk3-top2-delta { font-family: var(--font-body); font-size: 10px; color: var(--silk-dim); min-width: 54px; text-align: right; }
+.mk3-top2-delta.up { color: var(--red); }
+.mk3-top2-delta.down { color: #78b070; }
+
+/* ── Candidate selector (rotary knob look, actually a select) ────────── */
+.mk3-selector {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 10px 32px 10px 14px;
+  background:
+    linear-gradient(180deg, #2a261e 0%, #1b1814 100%);
+  border: 1px solid #000;
+  border-radius: 3px;
+  color: var(--amber);
+  font-family: var(--font-body);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-shadow: 0 0 4px var(--amber-glow);
+  box-shadow:
+    inset 0 1px 0 rgba(255,245,220,0.08),
+    inset 0 -1px 0 rgba(0,0,0,0.6);
+  cursor: pointer;
+  min-width: 240px;
+  background-image:
+    linear-gradient(180deg, #2a261e 0%, #1b1814 100%),
+    linear-gradient(135deg, transparent 50%, var(--amber) 50%, var(--amber) 60%, transparent 60%);
+}
+.mk3-selector option { background: #1b1814; color: var(--silk); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   VELLUM SCHEMATIC THUMB
+   ═══════════════════════════════════════════════════════════════════════ */
+.mk3-vellum {
+  position: relative;
+  padding: 18px;
+  background-color: #ece3cb;
+  background-image:
+    /* 5mm grid */
+    linear-gradient(to right,  rgba(72,107,154,0.10) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(72,107,154,0.10) 1px, transparent 1px),
+    /* paper texture */
+    radial-gradient(circle at 20% 20%, rgba(115,85,40,0.04) 0, transparent 50px),
+    radial-gradient(circle at 80% 70%, rgba(115,85,40,0.04) 0, transparent 60px);
+  background-size: 10px 10px, 10px 10px, auto, auto;
+  border: 1px solid #8a7d5a;
+  box-shadow:
+    inset 0 0 40px rgba(139,95,40,0.08),
+    inset 0 0 0 1px rgba(0,0,0,0.04),
+    0 1px 0 rgba(255,245,220,0.12),
+    0 4px 12px rgba(0,0,0,0.4);
+  min-height: 340px;
+  overflow: hidden;
+}
+.mk3-vellum::before {
+  /* aged paper edges */
+  content: '';
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(circle at 0% 0%,  rgba(115,85,40,0.18) 0, transparent 35%),
+    radial-gradient(circle at 100% 0%, rgba(115,85,40,0.14) 0, transparent 30%),
+    radial-gradient(circle at 100% 100%, rgba(115,85,40,0.14) 0, transparent 30%),
+    radial-gradient(circle at 0% 100%, rgba(115,85,40,0.18) 0, transparent 35%);
+}
+
+/* Brass grommets pinning the vellum to the rack */
+.mk3-grommet {
+  position: absolute;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 40% 40%, #f1d680 0%, #a88430 55%, #5a4418 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(0,0,0,0.5),
+    inset 0 2px 2px rgba(255,240,200,0.3),
+    0 1px 3px rgba(0,0,0,0.6);
+  z-index: 4;
+}
+.mk3-grommet::after {
+  content: ''; position: absolute; inset: 4px; border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, #1c1a17 0%, #2a251c 80%, #1a1612 100%);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.9);
+}
+.mk3-grommet.tl { top: 8px; left: 8px; }
+.mk3-grommet.tr { top: 8px; right: 8px; }
+
+/* Recolor the inlined P&ID SVG to draft blue on vellum */
+.mk3-vellum svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+.mk3-vellum svg text { fill: var(--draft-blue) !important; font-family: var(--font-hand) !important; }
+.mk3-vellum svg path,
+.mk3-vellum svg line,
+.mk3-vellum svg rect:not([fill="none"]),
+.mk3-vellum svg circle,
+.mk3-vellum svg polygon,
+.mk3-vellum svg polyline {
+  stroke: var(--draft-blue) !important;
+}
+.mk3-vellum svg rect[fill]:not([fill="none"]),
+.mk3-vellum svg path[fill]:not([fill="none"]),
+.mk3-vellum svg circle[fill]:not([fill="none"]) {
+  fill: transparent !important;
+}
+.mk3-vellum svg [fill="#0a0d0f"],
+.mk3-vellum svg [fill="#0a0d10"] { fill: transparent !important; }
+
+/* Title block — bottom right */
+.mk3-titleblock {
+  position: absolute;
+  bottom: 10px; right: 10px;
+  border: 1px solid var(--draft-blue);
+  background: rgba(236,227,203,0.85);
+  font-family: var(--font-hand);
+  font-size: 13px;
+  color: var(--draft-blue);
+  padding: 0;
+  display: grid;
+  grid-template-columns: auto auto;
+  min-width: 200px;
+}
+.mk3-titleblock > div {
+  padding: 3px 8px;
+  border-right: 1px solid var(--draft-blue);
+  border-bottom: 1px solid var(--draft-blue);
+  line-height: 1.2;
+}
+.mk3-titleblock > div:nth-child(2n) { border-right: none; }
+.mk3-titleblock > div.full { grid-column: 1 / -1; }
+.mk3-titleblock .lbl {
+  font-family: var(--font-label); font-weight: 700;
+  font-size: 8.5px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--draft-blue); opacity: 0.7;
+  margin-bottom: 1px;
+}
+.mk3-titleblock .val { font-family: var(--font-hand); font-size: 14px; color: var(--draft-blue); line-height: 1; }
+
+/* Margin note — handwritten annotation on the vellum */
+.mk3-margin-note {
+  position: absolute;
+  font-family: var(--font-hand);
+  color: var(--draft-blue);
+  font-size: 15px;
+  transform: rotate(-4deg);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   KEY METRICS — 6-cell Nixie tube bank
+   ═══════════════════════════════════════════════════════════════════════ */
+.mk3-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.mk3-metric {
+  position: relative;
+  padding: 12px 14px 14px;
+  background: linear-gradient(180deg, #2d2820 0%, #1f1c16 100%);
+  border: 1px solid #000;
+  border-radius: 3px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,245,220,0.08),
+    inset 0 -1px 0 rgba(0,0,0,0.6),
+    0 1px 0 rgba(0,0,0,0.5);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.mk3-metric-lbl {
+  font-family: var(--font-label); font-weight: 700;
+  font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--silk);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.mk3-metric-val { margin-top: 2px; }
+
+/* Alarm LED embedded in metric label */
+.mk3-metric-led {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #3a2814 0%, #1a1208 100%);
+  box-shadow: inset 0 1px 1px rgba(0,0,0,0.8);
+}
+.mk3-metric.caution .mk3-metric-led {
+  background: radial-gradient(circle at 35% 30%, #ffd67a 0%, var(--amber) 45%, #5a3e10 100%);
+  box-shadow: 0 0 6px var(--amber-glow), 0 0 10px var(--amber-glow);
+  animation: mk3-lamp-flicker 1.8s ease-in-out infinite;
+}
+.mk3-metric.warning {
+  border-color: var(--red);
+  box-shadow: inset 0 0 0 1px var(--red), inset 0 0 18px rgba(196,52,40,0.20);
+}
+.mk3-metric.warning .mk3-metric-led {
+  background: radial-gradient(circle at 35% 30%, #ff9081 0%, var(--red) 45%, #4a1410 100%);
+  box-shadow: 0 0 8px var(--red-glow), 0 0 14px var(--red-glow);
+  animation: mk3-lamp-pulse 0.9s ease-in-out infinite;
+}
+.mk3-metric-delta {
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--silk-dim);
+  letter-spacing: 0.06em;
+}
+.mk3-metric-delta .up { color: var(--red); }
+.mk3-metric-delta .down { color: #78b070; }
+
+@keyframes mk3-lamp-flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.75; }
+}
+@keyframes mk3-lamp-pulse {
+  0%, 100% { opacity: 1; filter: brightness(1.1); }
+  50%      { opacity: 0.45; filter: brightness(0.7); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ANNUNCIATOR PANEL — master lamps + matrix of coded cells
+   ═══════════════════════════════════════════════════════════════════════ */
+.mk3-annun {
+  position: relative;
+  padding: 16px;
+  background: linear-gradient(180deg, #1c1a15 0%, #141210 100%);
+  border: 1px solid #000;
+  border-radius: 3px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,245,220,0.06),
+    inset 0 -1px 0 rgba(0,0,0,0.7);
+  display: grid;
+  grid-template-rows: 2fr 1px 1fr;  /* top: cue catalog · rail · bottom: masters */
+  gap: 12px;
+  min-height: 100%;
+  align-self: stretch;
+}
+
+/* Thin engraved rail separating alert catalog from the master alarms */
+.mk3-annun::before {
+  content: '';
+  grid-row: 2;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent 0%, rgba(0,0,0,0.8) 8%, rgba(0,0,0,0.8) 92%, transparent 100%);
+  box-shadow: 0 1px 0 rgba(255,245,220,0.05);
+}
+
+/* Master lamps — side-by-side, big, in the bottom third */
+.mk3-masters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-items: stretch;
+  min-height: 0;
+}
+.mk3-masters > .mk3-master {
+  height: 100%;
+  min-height: 96px;
+}
+.mk3-master {
+  position: relative;
+  width: 100%;
+  padding: 10px;
+  background: linear-gradient(180deg, #2a261e 0%, #1a1612 100%);
+  border: 1px solid #000;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 rgba(255,245,220,0.08), inset 0 -1px 0 rgba(0,0,0,0.6);
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+  gap: 8px;
+}
+
+/* Top status strip — tag + live nominal/triggered state */
+.mk3-master-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 8px;
+  background: #0e0c09;
+  border: 1px solid #000;
+  border-radius: 2px;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.8);
+  font-family: var(--font-label); font-weight: 700;
+  font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase;
+}
+.mk3-master-tag { color: var(--silk-dim); }
+.mk3-master-state { color: var(--silk-dim); }
+.mk3-master.active.caution .mk3-master-state { color: var(--amber); text-shadow: 0 0 4px var(--amber-glow); }
+.mk3-master.active.warning .mk3-master-state { color: #ffb0a5; text-shadow: 0 0 4px var(--red-glow); }
+
+/* Bottom foot — PUSH TO ACK / PRESS TO TEST tape strip */
+.mk3-master-foot {
+  display: flex; align-items: center; justify-content: center;
+  padding: 4px 6px;
+  background: #0e0c09;
+  border: 1px solid #000;
+  border-radius: 2px;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.8);
+}
+
+/* Bezel rivets at lens corners */
+.mk3-master-rivet {
+  position: absolute;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #6a6055 0%, #1a1612 70%);
+  box-shadow: 0 0 2px rgba(0,0,0,0.7);
+  z-index: 2;
+}
+.mk3-master-rivet.tl { top: 4px; left: 4px; }
+.mk3-master-rivet.tr { top: 4px; right: 4px; }
+.mk3-master-rivet.bl { bottom: 4px; left: 4px; }
+.mk3-master-rivet.br { bottom: 4px; right: 4px; }
+.mk3-master-lens {
+  position: relative;
+  flex: 1;
+  min-height: 68px;
+  background: linear-gradient(180deg, #141210 0%, #08070a 100%);
+  border: 1px solid #000;
+  border-radius: 2px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px;
+  box-shadow:
+    inset 0 2px 3px rgba(0,0,0,0.9),
+    inset 0 -1px 0 rgba(255,245,220,0.04);
+  overflow: hidden;
+}
+.mk3-master-lens::after {
+  /* diffuser horizontal ribbing */
+  content: '';
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(0deg,
+    rgba(0,0,0,0.2) 0 1px, transparent 1px 3px);
+  pointer-events: none; opacity: 0.4;
+}
+.mk3-master-l1, .mk3-master-l2 {
+  font-family: var(--font-label); font-weight: 700;
+  letter-spacing: 0.2em; text-transform: uppercase;
+  font-size: 17px; line-height: 1.1;
+  color: rgba(40,35,28,0.9);
+  text-shadow: 0 1px 0 rgba(255,245,220,0.05);
+  position: relative; z-index: 1;
+  transition: color 280ms ease, text-shadow 280ms ease;
+}
+.mk3-master.active.caution .mk3-master-l1,
+.mk3-master.active.caution .mk3-master-l2 {
+  color: var(--amber);
+  text-shadow: 0 0 5px var(--amber-glow), 0 0 12px var(--amber-glow);
+}
+.mk3-master.active.warning .mk3-master-l1,
+.mk3-master.active.warning .mk3-master-l2 {
+  color: #ffb0a5;
+  text-shadow: 0 0 5px var(--red-glow), 0 0 14px var(--red-glow);
+}
+.mk3-master.active .mk3-master-lens {
+  background: linear-gradient(180deg, rgba(216,168,74,0.12) 0%, rgba(24,18,10,0.9) 100%);
+  box-shadow: inset 0 0 20px rgba(216,168,74,0.35), inset 0 2px 3px rgba(0,0,0,0.7);
+}
+.mk3-master.active.warning .mk3-master-lens {
+  background: linear-gradient(180deg, rgba(196,52,40,0.20) 0%, rgba(24,8,8,0.9) 100%);
+  box-shadow: inset 0 0 24px rgba(196,52,40,0.45), inset 0 2px 3px rgba(0,0,0,0.7);
+}
+/* Animations only while NOT acked. Ack = solid lit, no pulse. */
+.mk3-master.active.warning:not(.acked) .mk3-master-lens {
+  animation: mk3-master-warn-pulse 0.9s ease-in-out infinite;
+}
+.mk3-master.active.caution:not(.acked) .mk3-master-lens {
+  animation: mk3-master-caut-breathe 1.8s ease-in-out infinite;
+}
+/* Acked = solid lit but dimmer — signal has been heard, not cleared */
+.mk3-master.active.acked .mk3-master-lens { filter: brightness(0.75) saturate(0.85); }
+.mk3-master.active.acked .mk3-master-press { color: var(--silk-dim); }
+}
+@keyframes mk3-master-warn-pulse {
+  0%,100% { filter: brightness(1); }
+  50%     { filter: brightness(1.35); }
+}
+@keyframes mk3-master-caut-breathe {
+  0%,100% { filter: brightness(0.92); }
+  50%     { filter: brightness(1.15); }
+}
+.mk3-master-sub {
+  font-family: var(--font-body);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--silk-dim);
+  text-transform: uppercase;
+  text-align: center;
+  margin-top: 6px;
+  min-height: 22px;
+}
+.mk3-master-press {
+  font-family: var(--font-label); font-weight: 600;
+  font-size: 8px; letter-spacing: 0.24em; color: var(--silk-dim);
+  margin-top: 4px; text-align: center; text-transform: uppercase;
+}
+
+/* Cue-card matrix — fixed catalog of alert slots.
+   All possible alerts always visible; lit ones glow in their severity
+   color, unlit ones sit as dim colored wafers so you can read which
+   conditions the panel watches for. */
+.mk3-cue {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  grid-auto-rows: 52px;
+  gap: 6px;
+  align-self: start;
+}
+.mk3-cue-lamp {
+  position: relative;
+  background: linear-gradient(180deg, #2a261e 0%, #1a1612 100%);
+  border: 1px solid #000;
+  border-radius: 2px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 4px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,245,220,0.06),
+    inset 0 -1px 0 rgba(0,0,0,0.6);
+}
+.mk3-cue-glass {
+  position: absolute; inset: 3px;
+  background: linear-gradient(180deg, #0a0808 0%, #050404 100%);
+  border-radius: 1px;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.9);
+}
+.mk3-cue-code, .mk3-cue-src {
+  position: relative; z-index: 1;
+  font-family: var(--font-label); font-weight: 700;
+  text-transform: uppercase;
+  text-align: center;
+}
+.mk3-cue-code {
+  font-size: 13px; letter-spacing: 0.08em;
+  color: rgba(60,55,45,0.6);
+  text-shadow: 0 1px 0 rgba(255,245,220,0.04);
+}
+.mk3-cue-src {
+  font-size: 7.5px; letter-spacing: 0.18em;
+  color: rgba(60,55,45,0.5);
+  margin-top: 2px;
+}
+
+/* Dim (unlit) severity tints — slot tells you what it's FOR even when off */
+.mk3-cue-lamp.advisory .mk3-cue-code { color: rgba(72,107,154,0.35); }
+.mk3-cue-lamp.advisory .mk3-cue-src  { color: rgba(72,107,154,0.28); }
+.mk3-cue-lamp.caution  .mk3-cue-code { color: rgba(216,168,74,0.30); }
+.mk3-cue-lamp.caution  .mk3-cue-src  { color: rgba(216,168,74,0.24); }
+.mk3-cue-lamp.warning  .mk3-cue-code { color: rgba(196,52,40,0.38); }
+.mk3-cue-lamp.warning  .mk3-cue-src  { color: rgba(196,52,40,0.30); }
+.mk3-cue-lamp.on.advisory .mk3-cue-glass {
+  background: radial-gradient(ellipse at 50% 40%, rgba(72,107,154,0.3) 0%, rgba(20,14,24,0.95) 75%);
+  box-shadow: inset 0 0 12px rgba(72,107,154,0.45);
+}
+.mk3-cue-lamp.on.advisory .mk3-cue-code,
+.mk3-cue-lamp.on.advisory .mk3-cue-src {
+  color: #a8c4e8;
+  text-shadow: 0 0 4px rgba(72,107,154,0.7), 0 0 9px rgba(72,107,154,0.5);
+}
+.mk3-cue-lamp.on.caution .mk3-cue-glass {
+  background: radial-gradient(ellipse at 50% 40%, rgba(216,168,74,0.35) 0%, rgba(20,14,6,0.95) 75%);
+  box-shadow: inset 0 0 12px rgba(216,168,74,0.5);
+}
+.mk3-cue-lamp.on.caution .mk3-cue-code,
+.mk3-cue-lamp.on.caution .mk3-cue-src {
+  color: var(--amber);
+  text-shadow: 0 0 5px var(--amber-glow), 0 0 10px var(--amber-glow);
+}
+.mk3-cue-lamp.on.warning .mk3-cue-glass {
+  background: radial-gradient(ellipse at 50% 40%, rgba(196,52,40,0.45) 0%, rgba(20,4,4,0.95) 75%);
+  box-shadow: inset 0 0 14px rgba(196,52,40,0.6);
+  animation: mk3-lamp-pulse 0.9s ease-in-out infinite;
+}
+.mk3-cue-lamp.on.warning .mk3-cue-code,
+.mk3-cue-lamp.on.warning .mk3-cue-src {
+  color: #ffb0a5;
+  text-shadow: 0 0 5px var(--red-glow), 0 0 10px var(--red-glow);
+}
+.mk3-cue-lamp.on {
+  animation: mk3-lamp-fadein 400ms ease-out 1;
+}
+@keyframes mk3-lamp-fadein {
+  0%   { filter: brightness(0); }
+  40%  { filter: brightness(1.4); }
+  100% { filter: brightness(1); }
+}
+
+/* Tooltip */
+.mk3-cue-lamp[title]:hover::after {
+  content: attr(title);
+  position: absolute; top: calc(100% + 6px); left: 50%;
+  transform: translateX(-50%);
+  background: #1a1612; color: var(--silk);
+  padding: 5px 8px; border: 1px solid #000;
+  font-family: var(--font-body); font-size: 10px;
+  letter-spacing: 0.06em; white-space: nowrap;
+  z-index: 20; pointer-events: none;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.6);
+  max-width: 260px; white-space: normal; min-width: 180px;
+  text-transform: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PATCH-PANEL SIDEBAR
+   ═══════════════════════════════════════════════════════════════════════ */
+.mk3-sidebar {
+  position: sticky; top: 14px;
+  display: flex; flex-direction: column; gap: 14px;
+  min-width: 0;
+}
+.mk3-side-unit {
+  position: relative;
+  padding: 30px 16px 16px;
+  border: 1px solid var(--seam);
+  box-shadow:
+    0 2px 0 rgba(0,0,0,0.55),
+    0 6px 18px rgba(0,0,0,0.4),
+    inset 0 1px 0 rgba(255,245,220,0.08);
+}
+.mk3-side-unit .mk3-dymo {
+  top: 8px; left: 12px; right: 12px; height: 16px;
+  font-size: 9px; letter-spacing: 0.22em;
+}
+
+.mk3-field {
+  display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px;
+}
+.mk3-field-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+.mk3-field-lbl {
+  font-family: var(--font-label); font-weight: 700;
+  font-size: 9.5px; letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--silk);
+  text-shadow: 0 -1px 0 rgba(0,0,0,0.7), 0 1px 0 rgba(255,245,220,0.05);
+}
+.mk3-field-unit {
+  font-family: var(--font-body); font-size: 9.5px;
+  color: var(--amber);
+  letter-spacing: 0.1em;
+}
+.mk3-numinput {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 16px;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: var(--nixie);
+  text-shadow: 0 0 4px var(--nixie-glow), 0 0 10px var(--nixie-glow);
+  background: linear-gradient(180deg, #050403 0%, #0f0c08 100%);
+  border: 1px solid #000;
+  border-radius: 2px;
+  padding: 8px 10px;
+  width: 100%;
+  box-shadow:
+    inset 0 2px 4px rgba(0,0,0,0.9),
+    inset 0 -1px 0 rgba(255,122,46,0.06);
+  letter-spacing: 0.08em;
+  outline: none;
+}
+.mk3-numinput:focus {
+  box-shadow:
+    inset 0 2px 4px rgba(0,0,0,0.9),
+    inset 0 0 0 1px var(--nixie),
+    0 0 10px var(--nixie-glow);
+}
+.mk3-numinput::-webkit-outer-spin-button, .mk3-numinput::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* Toggle-switch chips — the bank of illuminated push-buttons */
+.mk3-switchbank {
+  display: flex; flex-direction: column; gap: 6px;
+  margin-bottom: 10px;
+}
+.mk3-switch {
+  position: relative;
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 10px 7px 8px;
+  background: linear-gradient(180deg, #2a261e 0%, #1a1612 100%);
+  border: 1px solid #000;
+  border-radius: 2px;
+  box-shadow: inset 0 1px 0 rgba(255,245,220,0.08), inset 0 -1px 0 rgba(0,0,0,0.6);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.mk3-switch:hover { background: linear-gradient(180deg, #332e25 0%, #1f1c16 100%); }
+.mk3-switch-led {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #3a2814 0%, #141006 100%);
+  box-shadow: inset 0 1px 1px rgba(0,0,0,0.8);
+  flex-shrink: 0;
+  transition: background 240ms ease, box-shadow 240ms ease;
+}
+.mk3-switch.on .mk3-switch-led {
+  background: radial-gradient(circle at 35% 30%, #ffd67a 0%, var(--amber) 45%, #5a3e10 100%);
+  box-shadow: 0 0 5px var(--amber-glow), 0 0 10px var(--amber-glow);
+}
+.mk3-switch-label {
+  font-family: var(--font-label); font-weight: 700;
+  font-size: 10.5px; letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--silk-dim);
+  flex: 1;
+  transition: color 180ms ease;
+}
+.mk3-switch.on .mk3-switch-label {
+  color: var(--amber);
+  text-shadow: 0 0 4px var(--amber-glow);
+}
+
+/* Rocker-toggle (vertical lever switch) for ITAR-style booleans */
+.mk3-rocker {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px;
+  background: linear-gradient(180deg, #2a261e 0%, #1a1612 100%);
+  border: 1px solid #000;
+  border-radius: 2px;
+  margin-bottom: 10px;
+}
+.mk3-rocker-lbl {
+  font-family: var(--font-label); font-weight: 700;
+  font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--silk);
+}
+.mk3-rocker-sw {
+  position: relative;
+  width: 46px; height: 22px;
+  background: linear-gradient(180deg, #050404 0%, #0f0c08 100%);
+  border: 1px solid #000; border-radius: 11px;
+  cursor: pointer;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.9);
+}
+.mk3-rocker-bat {
+  position: absolute; top: 1px; left: 1px;
+  width: 18px; height: 18px;
+  background:
+    radial-gradient(circle at 35% 30%, #b3a893 0%, #73695a 55%, #3d372d 100%);
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,245,220,0.25);
+  transition: transform 180ms cubic-bezier(0.4, 1.3, 0.5, 1);
+}
+.mk3-rocker.on .mk3-rocker-sw {
+  background: linear-gradient(180deg, #4a3810 0%, #1a1208 100%);
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.9), inset 0 0 10px var(--amber-glow);
+}
+.mk3-rocker.on .mk3-rocker-bat {
+  transform: translateX(23px);
+  background: radial-gradient(circle at 35% 30%, #ffd67a 0%, var(--amber) 55%, #6a4a10 100%);
+  box-shadow: 0 0 8px var(--amber-glow);
+}
+
+/* Slider (calibrated lever) */
+.mk3-slider-field {
+  display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px;
+}
+.mk3-slider-head {
+  display: flex; justify-content: space-between; align-items: center;
+}
+.mk3-slider-val {
+  font-family: var(--font-nixie);
+  color: var(--nixie);
+  font-size: 16px;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 5px var(--nixie-glow);
+}
+.mk3-range {
+  appearance: none; -webkit-appearance: none;
+  width: 100%; height: 22px;
+  background: transparent;
+}
+.mk3-range::-webkit-slider-runnable-track {
+  height: 8px;
+  background: linear-gradient(180deg, #050403 0%, #120d08 100%);
+  border: 1px solid #000;
+  border-radius: 2px;
+  box-shadow: inset 0 2px 3px rgba(0,0,0,0.9);
+}
+.mk3-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 22px;
+  background: linear-gradient(180deg, #cdc2a6 0%, #6b6458 60%, #3d372d 100%);
+  border: 1px solid #000;
+  border-radius: 2px;
+  margin-top: -8px;
+  box-shadow:
+    0 1px 2px rgba(0,0,0,0.6),
+    inset 0 1px 0 rgba(255,245,220,0.4),
+    inset 0 -1px 0 rgba(0,0,0,0.5);
+  cursor: grab;
+}
+.mk3-range:active::-webkit-slider-thumb { cursor: grabbing; }
+.mk3-range::-moz-range-track {
+  height: 8px;
+  background: linear-gradient(180deg, #050403 0%, #120d08 100%);
+  border: 1px solid #000;
+  border-radius: 2px;
+}
+.mk3-range::-moz-range-thumb {
+  width: 14px; height: 20px;
+  background: linear-gradient(180deg, #cdc2a6 0%, #6b6458 60%, #3d372d 100%);
+  border: 1px solid #000;
+  border-radius: 2px;
+}
+.mk3-slider-caption {
+  font-family: var(--font-body); font-size: 9px;
+  color: var(--silk-dim); letter-spacing: 0.08em; text-align: center;
+  opacity: 0.7;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MASTER ARM (re-skinned — lever switch with toggle guard)
+   ═══════════════════════════════════════════════════════════════════════ */
+.mk3-arm {
+  position: relative;
+  padding: 12px;
+  background: linear-gradient(180deg, #1e1b16 0%, #151210 100%);
+  border: 1px solid #000;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 rgba(255,245,220,0.06);
+}
+.mk3-arm-plate {
+  display: flex; gap: 10px; align-items: flex-start;
+}
+.mk3-arm-lever {
+  position: relative;
+  width: 48px; height: 82px;
+  background: linear-gradient(180deg, #2a261e 0%, #1a1612 100%);
+  border: 1px solid #000; border-radius: 3px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: inset 0 2px 3px rgba(0,0,0,0.9);
+}
+.mk3-arm-bat {
+  width: 18px; height: 48px;
+  background: linear-gradient(180deg, #d0c5aa 0%, #6b6458 45%, #3d372d 100%);
+  border: 1px solid #000; border-radius: 3px;
+  position: relative;
+  transition: transform 250ms cubic-bezier(0.4, 1.2, 0.5, 1), background 250ms ease;
+  transform-origin: bottom center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.7);
+  transform: translateY(10px) rotate(0deg);
+}
+.mk3-arm.pending .mk3-arm-bat { transform: translateY(10px) rotate(0deg); }
+.mk3-arm.armed .mk3-arm-bat {
+  transform: translateY(-10px) rotate(0deg);
+  background: linear-gradient(180deg, #ffd880 0%, var(--amber) 45%, #6a4a10 100%);
+  box-shadow: 0 0 10px var(--amber-glow);
+}
+.mk3-arm.firing .mk3-arm-bat {
+  transform: translateY(-10px) rotate(0deg);
+  background: linear-gradient(180deg, #ffb0a5 0%, var(--red) 45%, #4a1410 100%);
+  box-shadow: 0 0 12px var(--red-glow);
+}
+/* Lever scale tick marks */
+.mk3-arm-lever::before, .mk3-arm-lever::after {
+  content: ''; position: absolute; left: 4px; right: 4px;
+  border-top: 1px dashed rgba(255,245,220,0.25);
+}
+.mk3-arm-lever::before { top: 18px; }
+.mk3-arm-lever::after  { bottom: 18px; }
+
+.mk3-arm-state {
+  flex: 1;
+  display: flex; flex-direction: column; gap: 6px;
+  font-family: var(--font-body); font-size: 10.5px;
+}
+.mk3-arm-led-row { display: flex; align-items: center; gap: 8px; }
+.mk3-arm-led {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #3a2814 0%, #141006 100%);
+  box-shadow: inset 0 1px 1px rgba(0,0,0,0.8);
+  transition: background 200ms ease, box-shadow 200ms ease;
+}
+.mk3-arm.idle .mk3-arm-led {
+  background: radial-gradient(circle at 35% 30%, #a8e0a0 0%, #4a8848 50%, #1c3418 100%);
+  box-shadow: 0 0 5px rgba(110,224,106,0.4);
+}
+.mk3-arm.pending .mk3-arm-led {
+  background: radial-gradient(circle at 35% 30%, #ffd67a 0%, var(--amber) 45%, #5a3e10 100%);
+  box-shadow: 0 0 6px var(--amber-glow);
+  animation: mk3-lamp-flicker 0.9s ease-in-out infinite;
+}
+.mk3-arm.firing .mk3-arm-led {
+  background: radial-gradient(circle at 35% 30%, #ffb0a5 0%, var(--red) 45%, #4a1410 100%);
+  box-shadow: 0 0 10px var(--red-glow);
+}
+.mk3-arm-status {
+  font-family: var(--font-label); font-weight: 700;
+  font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--silk);
+}
+.mk3-arm-diff {
+  font-family: var(--font-body); font-size: 10px;
+  color: var(--silk-dim); letter-spacing: 0.04em;
+  line-height: 1.5;
+}
+.mk3-arm-diff .tag {
+  display: inline-block; width: 42px;
+  font-family: var(--font-label); font-weight: 700;
+  font-size: 8.5px; letter-spacing: 0.2em;
+  color: var(--amber);
+}
+.mk3-arm-diff .hi { color: var(--nixie); text-shadow: 0 0 4px var(--nixie-glow); }
+.mk3-arm-revert {
+  font-family: var(--font-label); font-weight: 700;
+  font-size: 9px; letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--silk-dim);
+  padding: 3px 7px;
+  border: 1px solid rgba(255,245,220,0.15);
+  background: rgba(0,0,0,0.3);
+  margin-top: 3px; align-self: flex-start;
+}
+.mk3-arm-revert:hover { color: var(--amber); border-color: var(--amber); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TELEMETRY STRIP
+   ═══════════════════════════════════════════════════════════════════════ */
+.mk3-telem {
+  font-family: var(--font-body);
+  font-size: 10.5px;
+  color: var(--silk-dim);
+  line-height: 1.85;
+  letter-spacing: 0.05em;
+}
+.mk3-telem .k { color: var(--steel-hi); }
+.mk3-telem .v { color: var(--nixie); text-shadow: 0 0 6px var(--nixie-glow), 0 0 2px var(--nixie-glow); font-family: var(--font-nixie); font-size: 12px; letter-spacing: 0.02em; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TELETYPE · CONTINUOUS-FEED GREENBAR PRINTOUT
+   Columns fixed-pitch monospace, 6 lines per band, tractor-feed perfs
+   on both edges. Sits on a stainless shelf (mk3-steel) so it reads like
+   a live printout on a rack.
+   ═══════════════════════════════════════════════════════════════════════ */
+.mk3-teletype-shelf {
+  padding: 18px;
+}
+
+.mk3-teletype {
+  position: relative;
+  padding: 0 44px;               /* room for tractor-feed strips */
+  background:
+    /* 6-line alternating green/white bands.
+       Heights: 18px per row ⇒ 108px period. */
+    repeating-linear-gradient(0deg,
+      var(--green-bar) 0px, var(--green-bar) 108px,
+      var(--green-bar-2) 108px, var(--green-bar-2) 216px),
+    linear-gradient(180deg, var(--green-bar-2) 0%, var(--green-bar) 100%);
+  color: #1f2a16;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  line-height: 18px;
+  letter-spacing: 0.02em;
+  box-shadow:
+    inset 0 0 0 1px rgba(0,0,0,0.06),
+    0 1px 0 rgba(255,245,220,0.08),
+    0 4px 10px rgba(0,0,0,0.5);
+  overflow: hidden;
+}
+
+/* Tractor-feed perforation strips on both sides */
+.mk3-teletype::before,
+.mk3-teletype::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0; width: 30px;
+  background:
+    radial-gradient(circle at 50% 9px, #5d5e52 0 2.5px, transparent 3px),
+    radial-gradient(circle at 50% 27px, #5d5e52 0 2.5px, transparent 3px),
+    radial-gradient(circle at 50% 45px, #5d5e52 0 2.5px, transparent 3px),
+    radial-gradient(circle at 50% 63px, #5d5e52 0 2.5px, transparent 3px),
+    radial-gradient(circle at 50% 81px, #5d5e52 0 2.5px, transparent 3px),
+    radial-gradient(circle at 50% 99px, #5d5e52 0 2.5px, transparent 3px),
+    linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.12) 48%, rgba(0,0,0,0.22) 50%, rgba(0,0,0,0.12) 52%, transparent 100%);
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, repeat-y;
+  background-size: 100% 108px, 100% 108px, 100% 108px, 100% 108px, 100% 108px, 100% 108px, 100% auto;
+  background-position: 0 0, 0 0, 0 0, 0 0, 0 0, 0 0, 0 0;
+  /* Stack repeating perf pattern via mask */
+  z-index: 1;
+}
+/* Cleaner perf pattern — single seamless set of holes every 18px via radial on a mask */
+.mk3-teletype::before,
+.mk3-teletype::after {
+  background:
+    radial-gradient(circle 3px at 15px 9px,  #2e2a22 0 2.5px, transparent 3px) 0 0/18px 18px repeat-y,
+    linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.10) 48%, rgba(0,0,0,0.18) 50%, rgba(0,0,0,0.10) 52%, transparent 100%) center/100% 100% no-repeat,
+    linear-gradient(180deg, rgba(200,205,185,1) 0%, rgba(175,180,160,1) 100%);
+}
+.mk3-teletype::before { left: 0;  border-right: 1px dashed rgba(0,0,0,0.25); }
+.mk3-teletype::after  { right: 0; border-left:  1px dashed rgba(0,0,0,0.25); }
+
+/* Printer-head banner — dot-matrix look, first line of each output */
+.mk3-teletype-head {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  gap: 10px;
+  padding: 10px 6px 6px;
+  border-bottom: 1px dashed rgba(31,42,22,0.35);
+  font-family: var(--font-body); font-size: 10.5px;
+  color: #1f2a16;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.mk3-teletype-head .banner {
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+}
+.mk3-teletype-head .meta {
+  display: flex; flex-wrap: wrap; gap: 4px 18px;
+  font-size: 10px; opacity: 0.85;
+}
+.mk3-teletype-head .meta b { font-weight: 600; }
+
+/* Column headers */
+.mk3-tt-cols {
+  position: relative; z-index: 2;
+  display: grid;
+  grid-template-columns:
+    28px                     /* rank */
+    minmax(0, 1.6fr)         /* manufacturer + model */
+    72px                     /* mode */
+    72px                     /* wet kg */
+    64px                     /* prop kg */
+    58px                     /* frac % */
+    64px                     /* thrust N */
+    58px                     /* isp s */
+    52px                     /* t/w */
+    44px                     /* cx */
+    60px;                    /* flags */
+  gap: 10px;
+  padding: 4px 6px;
+  font-family: var(--font-body); font-weight: 600;
+  font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: #1b2612;
+  border-bottom: 1px solid #1b2612;
+}
+.mk3-tt-cols span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mk3-tt-cols .r { text-align: right; }
+
+/* Data rows — same grid. Alternating is handled by the greenbar bg. */
+.mk3-tt-row {
+  position: relative; z-index: 2;
+  display: grid;
+  grid-template-columns:
+    28px minmax(0, 1.6fr) 72px 72px 64px 58px 64px 58px 52px 44px 60px;
+  gap: 10px;
+  padding: 0 6px;
+  font-family: var(--font-body); font-size: 11.5px;
+  line-height: 18px;
+  color: #1b2612;
+  white-space: nowrap;
+  cursor: pointer;
+  border-bottom: 1px dotted rgba(31,42,22,0.12);
+}
+.mk3-tt-row:hover { background: rgba(31,42,22,0.08); }
+.mk3-tt-row.selected {
+  background: rgba(31,42,22,0.20);
+  box-shadow: inset 3px 0 0 var(--red), inset -3px 0 0 var(--red);
+}
+.mk3-tt-row .r { text-align: right; font-variant-numeric: tabular-nums; }
+.mk3-tt-row .eng { display: flex; gap: 6px; align-items: baseline; overflow: hidden; text-overflow: ellipsis; }
+.mk3-tt-row .mfr { opacity: 0.65; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
+.mk3-tt-row .mdl { font-weight: 600; }
+.mk3-tt-row .pid {
+  font-family: var(--font-body); font-weight: 600;
+  font-size: 9px; padding: 0 4px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  line-height: 14px;
+  color: #1b2612; background: rgba(255,245,220,0.4);
+  margin-left: 4px;
+}
+.mk3-tt-row.selected .pid { color: #3a0d08; border-color: #3a0d08; background: #e0d4b3; }
+
+/* Flag pills — warning stamps overprinted in red ink */
+.mk3-tt-flags { display: flex; gap: 4px; justify-content: flex-end; }
+.mk3-tt-flag {
+  font-family: var(--font-body); font-weight: 700;
+  font-size: 9px; letter-spacing: 0.1em;
+  padding: 0 4px; line-height: 14px;
+  border: 1px dashed currentColor;
+  border-radius: 2px;
+  text-transform: uppercase;
+  transform: rotate(-2deg);
+}
+.mk3-tt-flag.w { color: var(--red); }
+.mk3-tt-flag.c { color: #8a5a10; }
+.mk3-tt-flag.a { color: var(--draft-blue); }
+
+/* Form-feed footer */
+.mk3-teletype-foot {
+  position: relative; z-index: 2;
+  border-top: 1px dashed rgba(31,42,22,0.35);
+  padding: 6px 6px 10px;
+  font-family: var(--font-body); font-size: 10px;
+  color: #1f2a16; letter-spacing: 0.1em; text-transform: uppercase;
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+}
+.mk3-teletype-foot .stamp {
+  border: 1.5px solid var(--red);
+  color: var(--red);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  padding: 2px 8px;
+  transform: rotate(-3deg);
+  background: rgba(255,245,220,0.4);
+}
+
+/* Collapse column set on narrow layouts — hide THR/ISP/CX, keep
+   rank, engine, mode, wet, prop, frac, T/W, flags = 8 tracks/children */
+@media (max-width: 1180px) {
+  .mk3-tt-cols, .mk3-tt-row {
+    grid-template-columns: 28px minmax(0, 1.6fr) 72px 72px 64px 58px 52px 60px;
+  }
+  .mk3-tt-hide-compact { display: none !important; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ADVISORY LOG · Apollo-style punched cue cards
+   Each advisory is a cue card with a colored severity tab (left edge),
+   a three-letter code stamped in the corner, and typed message body.
+   ═══════════════════════════════════════════════════════════════════════ */
+.mk3-advisory-log {
+  display: grid;
+  gap: 8px;
+}
+.mk3-advisory-empty {
+  padding: 18px;
+  text-align: center;
+  font-family: var(--font-label); font-weight: 700;
+  font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--silk-dim);
+  border: 1px dashed rgba(255,245,220,0.15);
+}
+.mk3-advisory {
+  position: relative;
+  display: grid;
+  grid-template-columns: 6px auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px 8px 0;
+  background: linear-gradient(180deg, #201d17 0%, #171410 100%);
+  border: 1px solid #000;
+  border-radius: 2px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,245,220,0.06),
+    inset 0 -1px 0 rgba(0,0,0,0.6);
+}
+.mk3-advisory-tab {
+  width: 6px;
+  align-self: stretch;
+  background: rgba(255,245,220,0.2);
+  box-shadow: inset 1px 0 0 rgba(0,0,0,0.5);
+}
+.mk3-advisory.warning .mk3-advisory-tab {
+  background: var(--red);
+  box-shadow: 0 0 6px var(--red-glow), inset 1px 0 0 rgba(0,0,0,0.5);
+}
+.mk3-advisory.caution .mk3-advisory-tab {
+  background: var(--amber);
+  box-shadow: 0 0 6px var(--amber-glow), inset 1px 0 0 rgba(0,0,0,0.5);
+}
+.mk3-advisory.advisory .mk3-advisory-tab {
+  background: #6a93c6;
+  box-shadow: 0 0 4px rgba(72,107,154,0.5), inset 1px 0 0 rgba(0,0,0,0.5);
+}
+.mk3-advisory-code {
+  font-family: var(--font-label); font-weight: 700;
+  font-size: 10.5px; letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--silk);
+  padding: 4px 8px;
+  border: 1px solid rgba(255,245,220,0.15);
+  border-radius: 2px;
+  background: rgba(0,0,0,0.35);
+  min-width: 74px; text-align: center;
+  white-space: nowrap;
+}
+.mk3-advisory.warning  .mk3-advisory-code { color: #ffb0a5; border-color: var(--red); text-shadow: 0 0 5px var(--red-glow); }
+.mk3-advisory.caution  .mk3-advisory-code { color: var(--amber); border-color: var(--amber); text-shadow: 0 0 5px var(--amber-glow); }
+.mk3-advisory.advisory .mk3-advisory-code { color: #a8c4e8; border-color: #486b9a; }
+
+.mk3-advisory-body {
+  font-family: var(--font-body); font-size: 11.5px;
+  color: var(--silk);
+  line-height: 1.45;
+}
+.mk3-advisory-body .src {
+  font-family: var(--font-label); font-weight: 700;
+  font-size: 9px; letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--silk-dim);
+  margin-right: 8px;
+}
+.mk3-advisory-sev {
+  font-family: var(--font-label); font-weight: 700;
+  font-size: 9px; letter-spacing: 0.22em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.mk3-advisory.warning  .mk3-advisory-sev { color: #4a1410; background: #ffb0a5; }
+.mk3-advisory.caution  .mk3-advisory-sev { color: #3a2a08; background: #ffd67a; }
+.mk3-advisory.advisory .mk3-advisory-sev { color: #1a2234; background: #a8c4e8; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PLACEHOLDER BAYS (left for any future "coming next" cards)
+   ═══════════════════════════════════════════════════════════════════════ */
+.mk3-placeholder {
+  padding: 30px;
+  border: 1px dashed rgba(255,245,220,0.2);
+  font-family: var(--font-hand);
+  color: var(--draft-blue);
+  text-align: center;
+  font-size: 22px;
+  background: rgba(236,227,203,0.06);
+  min-height: 180px;
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+}
+.mk3-placeholder .note {
+  font-family: var(--font-label); font-weight: 700;
+  color: var(--silk-dim); font-size: 10px; letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ALARM — ROOM WASH (warm red emergency lighting)
+   ═══════════════════════════════════════════════════════════════════════ */
+.mk3.alarm-caution {
+  background:
+    radial-gradient(ellipse at 50% 0%, #3a2816 0%, var(--rack-black) 55%, #120a06 100%);
+}
+.mk3.alarm-warning {
+  background:
+    radial-gradient(ellipse at 50% 0%, #58201a 0%, #26100c 60%, #180806 100%);
+  animation: mk3-room-wash 1.4s ease-in-out infinite;
+}
+@keyframes mk3-room-wash {
+  0%, 100% { filter: brightness(1);       }
+  50%      { filter: brightness(1.12);    }
+}
+.mk3.alarm-warning::before {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 998;
+  box-shadow: inset 0 0 200px rgba(196,52,40,0.35);
+}
+.mk3.alarm-caution::before {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 998;
+  box-shadow: inset 0 0 160px rgba(216,168,74,0.20);
+}
+
+/* Solver pill (in header meta) gets hot */
+.mk3-solver-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 5px 12px;
+  background: linear-gradient(180deg, #2a261e 0%, #1a1612 100%);
+  border: 1px solid #000;
+  border-radius: 2px;
+  font-family: var(--font-label); font-weight: 700;
+  font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--silk);
+  box-shadow: inset 0 1px 0 rgba(255,245,220,0.08);
+}
+.mk3-solver-pill .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #a8e0a0, #4a8848);
+  box-shadow: 0 0 4px rgba(110,224,106,0.5);
+}
+.mk3.alarm-caution .mk3-solver-pill { color: var(--amber); border-color: var(--amber); text-shadow: 0 0 5px var(--amber-glow); }
+.mk3.alarm-caution .mk3-solver-pill .dot { background: radial-gradient(circle, #ffd880, #b3761c); box-shadow: 0 0 6px var(--amber-glow); animation: mk3-lamp-flicker 1.2s ease-in-out infinite; }
+.mk3.alarm-warning .mk3-solver-pill { color: #ffb0a5; border-color: var(--red); text-shadow: 0 0 5px var(--red-glow); }
+.mk3.alarm-warning .mk3-solver-pill .dot { background: radial-gradient(circle, #ffb0a5, var(--red)); box-shadow: 0 0 8px var(--red-glow); animation: mk3-lamp-pulse 0.5s ease-in-out infinite; }
+
+/* Print-only footer / tweaks panel text is inherited from tweaks shell */
